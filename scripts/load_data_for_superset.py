@@ -35,7 +35,7 @@ def load_tables():
 
     conn.close()
     print(f"\nDatabase: {DB_PATH}")
-    print("In Superset: Data → Databases → + Database → SQLite")
+    print("In Superset: Data > Databases > + Database > SQLite")
     print("Superset connection: sqlite:////app/superset_data/student_prediction.db")
 
 
