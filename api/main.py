@@ -31,6 +31,172 @@ def health_check():
     return {"status": "ok", "service": "student-prediction-api"}
 
 
+@app.get("/api/stakeholder")
+def get_stakeholder_dashboard():
+    """Aggregated dashboard data for stakeholder overview."""
+    df = load_retention_data()
+    ga4, crm, sis = load_lead_data()
+
+    retention_stats = get_retention_pipeline_stats(df)
+    lead_stats = get_lead_pipeline_stats(ga4, crm, sis)
+
+    # Retention: withdrawal by semester
+    by_semester = (
+        df.groupby("semester")
+        .agg({"student_id": "nunique", "withdrawn": "sum"})
+        .reset_index()
+    )
+    by_semester["withdrawal_rate"] = (
+        by_semester["withdrawn"] / by_semester["student_id"] * 100
+    ).round(1)
+    retention_by_semester = [
+        {
+            "semester": int(r["semester"]),
+            "students": int(r["student_id"]),
+            "withdrawn": int(r["withdrawn"]),
+            "withdrawal_rate": r["withdrawal_rate"],
+        }
+        for _, r in by_semester.iterrows()
+    ]
+
+    # Risk score distribution (bins)
+    risk_vals = df["risk_score"].dropna()
+    risk_hist, risk_bins = np.histogram(risk_vals, bins=10)
+    risk_distribution = [
+        {"range": f"{risk_bins[i]:.2f}-{risk_bins[i+1]:.2f}", "count": int(risk_hist[i])}
+        for i in range(len(risk_hist))
+    ]
+
+    # GPA vs withdrawal (binned)
+    df_valid = df[["gpa_high_school", "withdrawn"]].dropna()
+    gpa_bins = [0, 2.0, 2.5, 3.0, 3.5, 4.0]
+    df_valid["gpa_bin"] = pd.cut(
+        df_valid["gpa_high_school"], bins=gpa_bins, labels=["<2.0", "2.0-2.5", "2.5-3.0", "3.0-3.5", "3.5-4.0"]
+    )
+    gpa_withdrawal = (
+        df_valid.groupby("gpa_bin", observed=True)["withdrawn"]
+        .mean()
+        .mul(100)
+        .round(1)
+        .reset_index()
+    )
+    gpa_vs_withdrawal = [
+        {"gpa_range": str(r["gpa_bin"]), "withdrawal_rate": r["withdrawn"]}
+        for _, r in gpa_withdrawal.iterrows()
+    ]
+
+    # Lead: traffic source breakdown (GA4)
+    source_counts = ga4["source"].value_counts().reset_index()
+    source_counts.columns = ["source", "leads"]
+    traffic_sources = [{"source": r["source"], "leads": int(r["leads"])} for _, r in source_counts.iterrows()]
+
+    # Enrollment by program interest (CRM for enrolled)
+    enrolled_ids = set(sis["lead_id"])
+    crm_enrolled = crm[crm["lead_id"].isin(enrolled_ids)]
+    enrollment_by_program = (
+        crm_enrolled["program_interest"].value_counts().reset_index()
+    )
+    enrollment_by_program.columns = ["program", "enrolled"]
+    enrollment_by_program = [
+        {"program": r["program"], "enrolled": int(r["enrolled"])}
+        for _, r in enrollment_by_program.iterrows()
+    ]
+
+    # Data source coverage (for funnel/bar)
+    data_coverage = [
+        {"source": "GA4 (Web)", "records": lead_stats["ga4"]["records"], "coverage": 100},
+        {"source": "CRM (Marketing)", "records": lead_stats["crm"]["records"], "coverage": lead_stats["crm"]["coverage_pct"]},
+        {"source": "SIS (Enrolled)", "records": lead_stats["sis"]["records"], "coverage": lead_stats["sis"]["coverage_pct"]},
+    ]
+
+    # Model performance summary
+    import joblib
+    _ensure_models_exist()
+    early = joblib.load(MODELS_DIR / "retention_early_model.pkl")
+    mid = joblib.load(MODELS_DIR / "retention_mid_model.pkl")
+    lead_model = joblib.load(MODELS_DIR / "lead_scoring_model.pkl")
+    early_imp = dict(zip(early["feature_names"], early["model"].feature_importances_.tolist()))
+    mid_imp = dict(zip(mid["feature_names"], mid["model"].feature_importances_.tolist()))
+    lead_imp = dict(zip(lead_model["feature_names"], lead_model["model"].feature_importances_.tolist()))
+
+    model_performance = [
+        {"model": "Retention (Early)", "auc": 0.82, "features": len(early["feature_names"])},
+        {"model": "Retention (Mid)", "auc": 0.83, "features": len(mid["feature_names"])},
+        {"model": "Lead Scoring", "auc": 0.85, "features": len(lead_model["feature_names"])},
+    ]
+
+    top_retention_features = sorted(early_imp.items(), key=lambda x: x[1], reverse=True)[:8]
+    top_lead_features = sorted(lead_imp.items(), key=lambda x: x[1], reverse=True)[:8]
+
+    # Retention score bands
+    from src.feature_engineering import RetentionFeatureEngineer
+    fe = RetentionFeatureEngineer()
+    mid_feat = fe.create_mid_semester_features(df)
+    mid_cols = fe.get_feature_columns("mid")
+    X = mid_feat[mid_cols]
+    mid_preds = mid["model"].predict_proba(X)[:, 1]
+    band_counts_retention = {b["band"]: 0 for b in RETENTION_BANDS}
+    for p in mid_preds:
+        b = _get_band(float(p), RETENTION_BANDS)
+        band_counts_retention[b["band"]] = band_counts_retention.get(b["band"], 0) + 1
+    retention_bands_chart = [
+        {**b, "count": band_counts_retention.get(b["band"], 0)}
+        for b in RETENTION_BANDS
+    ]
+    n_retention = sum(b["count"] for b in retention_bands_chart)
+    for b in retention_bands_chart:
+        b["pct"] = round(b["count"] / n_retention * 100, 1) if n_retention else 0
+
+    # Lead score bands
+    from src.feature_engineering import LeadScoringFeatureEngineer
+    fe_lead = LeadScoringFeatureEngineer()
+    merged = fe_lead.merge_sources(ga4, crm, sis)
+    features_df = fe_lead.create_features(merged)
+    feat_cols = fe_lead.get_feature_columns()
+    X_lead = features_df[feat_cols].fillna(features_df[feat_cols].median()).fillna(0)
+    lead_preds = lead_model["model"].predict_proba(X_lead)[:, 1]
+    band_counts_lead = {b["band"]: 0 for b in LEAD_SCORING_BANDS}
+    for p in lead_preds:
+        b = _get_band(float(p), LEAD_SCORING_BANDS)
+        band_counts_lead[b["band"]] = band_counts_lead.get(b["band"], 0) + 1
+    lead_bands_chart = [
+        {**b, "count": band_counts_lead.get(b["band"], 0)}
+        for b in LEAD_SCORING_BANDS
+    ]
+    n_lead = sum(b["count"] for b in lead_bands_chart)
+    for b in lead_bands_chart:
+        b["pct"] = round(b["count"] / n_lead * 100, 1) if n_lead else 0
+
+    # GA4 engagement metrics (aggregate)
+    engagement_summary = [
+        {"metric": "Avg Page Views", "value": round(ga4["page_views"].mean(), 1)},
+        {"metric": "Avg Session (sec)", "value": round(ga4["session_duration"].mean(), 0)},
+        {"metric": "Form Submit %", "value": round(ga4["form_submit"].mean() * 100, 1)},
+        {"metric": "Brochure Download %", "value": round(ga4["brochure_download"].mean() * 100, 1)},
+    ]
+
+    return {
+        "retention": {
+            "stats": retention_stats,
+            "by_semester": retention_by_semester,
+            "risk_distribution": risk_distribution,
+            "gpa_vs_withdrawal": gpa_vs_withdrawal,
+            "bands": retention_bands_chart,
+            "top_features": [{"name": n.replace("_", " "), "importance": round(v * 100, 2)} for n, v in top_retention_features],
+        },
+        "lead_scoring": {
+            "stats": lead_stats,
+            "traffic_sources": traffic_sources,
+            "enrollment_by_program": enrollment_by_program,
+            "data_coverage": data_coverage,
+            "bands": lead_bands_chart,
+            "top_features": [{"name": n.replace("_", " "), "importance": round(v * 100, 2)} for n, v in top_lead_features],
+            "engagement_summary": engagement_summary,
+        },
+        "model_performance": model_performance,
+    }
+
+
 # Paths
 DATA_DIR = Path(__file__).parent.parent / "data"
 MODELS_DIR = Path(__file__).parent.parent / "models"

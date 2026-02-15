@@ -8,9 +8,11 @@ import {
   GraduationCap,
   Target,
   ChevronRight,
+  LayoutDashboard,
 } from 'lucide-react';
 
 type View =
+  | 'stakeholder'
   | 'retention-pipeline'
   | 'lead-pipeline'
   | 'retention-fe'
@@ -24,6 +26,7 @@ interface SidebarProps {
 }
 
 const navItems: { id: View; label: string; icon: React.ReactNode }[] = [
+  { id: 'stakeholder', label: 'Stakeholder Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
   { id: 'retention-pipeline', label: 'Retention Data Pipeline', icon: <Database className="w-5 h-5" /> },
   { id: 'lead-pipeline', label: 'Lead Scoring Data Pipeline', icon: <Database className="w-5 h-5" /> },
   { id: 'retention-fe', label: 'Retention Feature Engineering', icon: <Workflow className="w-5 h-5" /> },

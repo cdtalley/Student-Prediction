@@ -15,6 +15,8 @@ services:
       - superset_db:/var/lib/postgresql/data
 
   superset-init:
+    volumes:
+      - ./superset_config.py:/app/pythonpath/superset_config.py
     image: apache/superset:4.0.0-dev
     environment:
       SUPERSET_SECRET_KEY: student-prediction-secret-key
@@ -43,6 +45,7 @@ services:
     volumes:
       - superset_home:/app/superset_home
       - ./superset_data:/app/superset_data
+      - ./superset_config.py:/app/pythonpath/superset_config.py
     depends_on:
       - superset-init
       - db

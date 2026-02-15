@@ -22,7 +22,7 @@ python src/train.py
 docker compose -f docker-compose.superset.yml up -d
 ```
 
-Wait ~30 seconds for Superset to initialize.
+Wait ~30 seconds for Superset to initialize. The `superset_config.py` enables SQLite as a datasource (required for the provisioning script).
 
 ### 3. Load data into SQLite
 
@@ -30,24 +30,33 @@ Wait ~30 seconds for Superset to initialize.
 python scripts/load_data_for_superset.py
 ```
 
-### 4. Access Superset
+### 4. Provision dashboards via API (recommended)
+
+```powershell
+python scripts/superset_provision.py
+```
+
+This creates the database, datasets, 11 charts, and an **Executive Dashboard** automatically.
+
+### 5. Access Superset
 
 - **URL:** http://localhost:8088
 - **Login:** admin / admin
+- **Dashboard:** http://localhost:8088/superset/dashboard/student-prediction-exec/
 
-### 5. Add the database connection
+### 6. Manual setup (optional)
 
-1. Go to **Data** → **Databases** → **+ Database**
-2. Supported databases: **SQLite**
-3. Connection string: `sqlite:////app/superset_data/student_prediction.db`
-4. Display name: `Student Prediction`
-5. Click **Connect**
+If the provisioning script fails, you can set up manually:
 
-### 6. Create charts and dashboards
+1. **Data** → **Databases** → **+ Database**  
+   - Connection: `sqlite:////app/superset_data/student_prediction.db`  
+   - Display name: `Student Prediction`
 
-1. **Data** → **Datasets** → **+ Dataset** — add `retention`, `ga4`, `crm`, `sis`
-2. **Charts** → **+ Chart** — build visualizations
-3. **Dashboards** → **+ Dashboard** — combine charts
+2. **Data** → **Datasets** → **+ Dataset** — add `retention`, `ga4`, `crm`, `sis`
+
+3. **Charts** → **+ Chart** — build visualizations
+
+4. **Dashboards** → **+ Dashboard** — combine charts
 
 ## Suggested charts
 
