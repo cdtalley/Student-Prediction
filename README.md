@@ -14,15 +14,24 @@ This project addresses two critical business problems in higher education:
 
 ```
 Student Prediction/
+├── api/
+│   └── main.py                # FastAPI backend (data pipeline, models, score bands)
 ├── src/
-│   ├── data_generation.py      # Synthetic data generation with realistic patterns
-│   ├── feature_engineering.py  # Feature engineering pipelines
-│   ├── models.py              # XGBoost, LightGBM, and ensemble models
-│   └── train.py               # Training scripts with validation
-├── dashboard.py               # Interactive Streamlit dashboard
-├── config.yaml                # Configuration parameters
-├── requirements.txt           # Python dependencies
-└── README.md                  # This file
+│   ├── data_generation.py     # Synthetic data generation with realistic patterns
+│   ├── feature_engineering.py # Feature engineering pipelines
+│   ├── models.py              # XGBoost, LightGBM, ensemble models
+│   └── train.py               # Training script with validation
+├── web/                       # Next.js dashboard
+│   ├── src/
+│   │   ├── app/               # Pages and layout
+│   │   ├── components/        # Data pipeline, FE, model visualizations
+│   │   └── lib/               # API helpers
+│   └── package.json
+├── data/                      # Generated CSVs (created by train.py)
+├── models/                    # Trained .pkl files (created by train.py)
+├── config.yaml                # Configuration
+├── run.ps1                    # One-click start (Windows)
+└── requirements.txt
 ```
 
 ## 🚀 Quick Start
@@ -30,19 +39,22 @@ Student Prediction/
 ### Installation
 
 ```bash
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+# Windows: venv\Scripts\activate
+# Mac/Linux: source venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ### Generate Data and Train Models
 
 ```bash
-# Generate synthetic data and train all models
+# From project root, with PYTHONPATH set
+# Windows PowerShell:
+$env:PYTHONPATH = (Get-Location).Path
 python src/train.py
+
+# Or run.ps1 will auto-train if data is missing
+.\run.ps1
 ```
 
 This will:
@@ -108,7 +120,40 @@ The dashboard will open in your browser at `http://localhost:8501`
 - **Enrollment Prediction**: AUC ~0.78-0.85
 - Handles class imbalance (15% enrollment rate)
 
-## 🎨 Dashboard Features
+## 🖥️ Next.js Web Interface
+
+A sleek, dark-themed Next.js dashboard with comprehensive data pipeline visualizations:
+
+```bash
+# Terminal 1: Start FastAPI backend
+cd "Student Prediction"
+$env:PYTHONPATH = (Get-Location).Path
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+# Terminal 2: Start Next.js frontend
+cd web
+npm install
+npm run dev
+```
+
+Open **http://localhost:3000** for the web interface.
+
+### Web Dashboard Sections
+
+1. **Retention Data Pipeline** — Stats, missing data rates, feature distributions, correlation matrix
+2. **Lead Scoring Data Pipeline** — Join coverage (GA4→CRM→SIS), traffic sources, distributions
+3. **Retention Feature Engineering** — Pipeline steps, transformations, early vs mid features
+4. **Lead Feature Engineering** — Merge strategy, missing data handling
+5. **Retention Models** — Early/mid AUC, feature importance, **A/B/C/D risk bands with interventions**
+6. **Lead Scoring Model** — AUC, top features, **A/B/C/D lead bands with interventions**
+
+### Score Bands & Interventions
+
+Both retention and lead scoring use ABCD bands with specific actions:
+- **Retention**: A=Critical → phone+meeting, B=High → phone+advisor, C=Medium → email, D=Low → monitor
+- **Leads**: A=Hot → priority call, B=Warm → phone+email, C=Cool → nurture, D=Cold → low touch
+
+## 🎨 Streamlit Dashboard (Legacy)
 
 The interactive Streamlit dashboard includes:
 

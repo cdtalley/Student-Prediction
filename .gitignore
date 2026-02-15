@@ -23,3 +23,7 @@ logs/
 .env
 .idea/
 .vscode/
+
+# Next.js
+web/node_modules/
+web/.next/
