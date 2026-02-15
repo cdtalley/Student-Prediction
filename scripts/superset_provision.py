@@ -161,22 +161,27 @@ def create_chart(session: requests.Session, token: str, name: str, dataset_id: i
     return ch_id
 
 
-def create_dashboard(session: requests.Session, token: str, title: str, slug: str = "", csrf: str = "") -> int:
-    """Create a dashboard. Returns dashboard ID."""
+def ensure_dashboard(session: requests.Session, token: str, title: str, slug: str = "", csrf: str = "") -> int:
+    """Create or get dashboard. Returns dashboard ID."""
     headers = get_headers(token, csrf)
+    slug = slug or title.lower().replace(" ", "-").replace("'", "")
+    r = session.get(f"{BASE_URL}/api/v1/dashboard/", headers=headers, params={"page_size": 100}, timeout=30)
+    r.raise_for_status()
+    for d in r.json().get("result", []):
+        if d.get("slug") == slug or d.get("dashboard_title") == title:
+            dash_id = d["id"]
+            log(f"Dashboard '{title}' exists (id={dash_id}).")
+            return dash_id
+    log(f"Creating dashboard '{title}'...")
     r = session.post(
         f"{BASE_URL}/api/v1/dashboard/",
         headers=headers,
-        json={
-            "dashboard_title": title,
-            "slug": slug or title.lower().replace(" ", "-").replace("'", ""),
-            "published": True,
-        },
+        json={"dashboard_title": title, "slug": slug, "published": True},
         timeout=30,
     )
     r.raise_for_status()
     dash_id = r.json().get("id")
-    log(f"Dashboard '{title}' created (id={dash_id}).")
+    log(f"Dashboard created (id={dash_id}).")
     return dash_id
 
 
@@ -255,23 +260,41 @@ def main():
             exit(1)
         time.sleep(0.3)
 
-    log("Creating dashboard...")
-    dash_id = create_dashboard(session, token, "Student Prediction - Executive Dashboard", "student-prediction-exec", csrf)
+    dash_id = ensure_dashboard(session, token, "Student Prediction - Executive Dashboard", "student-prediction-exec", csrf)
     time.sleep(0.5)
 
     # Chart definitions: (name, dataset_key, viz_type, params, desc, w, h)
+    # Core + Advanced stakeholder-focused charts
     chart_defs = [
+        # --- CORE RETENTION ---
         ("Withdrawal by Semester", "retention", "bar", {"metrics": ["count"], "groupby": ["semester"], "row_limit": 50}, "Withdrawal count by semester", 6, 4),
         ("Retention Funnel", "retention", "pie", {"metrics": ["count"], "groupby": ["withdrawn"], "row_limit": 10}, "Withdrawn vs enrolled", 6, 4),
         ("Part-Time vs Full-Time", "retention", "pie", {"metrics": ["count"], "groupby": ["part_time"], "row_limit": 10}, "Part-time vs full-time students", 6, 4),
         ("First-Gen & Financial Aid", "retention", "bar", {"metrics": ["count"], "groupby": ["first_gen", "financial_aid"], "row_limit": 20}, "Demographic breakdown", 6, 4),
-        ("Semester × Withdrawn", "retention", "bar", {"metrics": ["count"], "groupby": ["semester", "withdrawn"], "row_limit": 50}, "Records by semester and withdrawal status", 12, 4),
+        ("Semester x Withdrawn", "retention", "bar", {"metrics": ["count"], "groupby": ["semester", "withdrawn"], "row_limit": 50}, "Records by semester and withdrawal status", 12, 4),
+        # --- ADVANCED RETENTION (Stakeholder KPIs) ---
+        ("Risk Score by Withdrawal Status", "retention", "box_plot", {"metrics": [{"expressionType": "SIMPLE", "aggregate": "AVG", "column": {"column_name": "risk_score"}}], "groupby": ["withdrawn"], "whisker_options": "Tukey"}, "Compare risk distribution: dropouts vs retained. Critical for intervention targeting.", 6, 5),
+        ("Mid-Semester GPA by Outcome", "retention", "box_plot", {"metrics": [{"expressionType": "SIMPLE", "aggregate": "AVG", "column": {"column_name": "mid_gpa"}}], "groupby": ["withdrawn"], "whisker_options": "Tukey"}, "Academic performance distribution by retention outcome.", 6, 5),
+        ("Retention Cohort Treemap", "retention", "treemap", {"metrics": ["count"], "groupby": ["semester", "withdrawn"], "row_limit": 100}, "Hierarchical view: Semester -> Withdrawal status. Size = student count.", 6, 5),
+        ("First-Gen Sunburst", "retention", "sunburst", {"metrics": ["count"], "groupby": ["semester", "first_gen", "withdrawn"], "row_limit": 80}, "Cohort drill-down: Semester -> First-gen -> Outcome. Stakeholder cohort analysis.", 6, 5),
+        ("Retention Pivot Table", "retention", "pivot_table_v2", {"metrics": ["count"], "groupbyRows": ["semester"], "groupbyColumns": ["withdrawn", "financial_aid"], "row_limit": 100}, "Cross-tab: Semester x Withdrawn x Financial Aid. Executive summary view.", 12, 5),
+        ("Total Students (KPI)", "retention", "big_number_total", {"metric": "count"}, "Total retention records in pipeline", 4, 2),
+        ("Withdrawn Count (KPI)", "retention", "big_number", {"metric": "count", "subheader": "At-risk students"}, "Students who withdrew (denominator for churn rate)", 4, 2),
+        # --- CORE LEAD SCORING ---
         ("Traffic Sources", "ga4", "pie", {"metrics": ["count"], "groupby": ["source"]}, "Lead distribution by GA4 source", 6, 4),
         ("GA4 by Source", "ga4", "bar", {"metrics": ["count"], "groupby": ["source"]}, "Lead count by traffic source", 6, 4),
         ("Enrollment by Program", "crm", "bar", {"metrics": ["count"], "groupby": ["program_interest"]}, "Enrolled by program interest", 6, 4),
         ("CRM by Program", "crm", "pie", {"metrics": ["count"], "groupby": ["program_interest"]}, "Lead distribution by program", 6, 4),
         ("Enrolled Count", "sis", "big_number_total", {"metric": "count"}, "Total enrolled students in SIS", 4, 2),
         ("SIS Financial Aid", "sis", "pie", {"metrics": ["count"], "groupby": ["financial_aid_applied"]}, "Enrolled by financial aid status", 6, 4),
+        # --- ADVANCED LEAD SCORING ---
+        ("Lead Flow Treemap", "crm", "treemap", {"metrics": ["count"], "groupby": ["program_interest"], "row_limit": 50}, "Pipeline health by program interest. Size = lead count.", 6, 5),
+        ("Engagement by Source", "ga4", "bar", {"metrics": [{"expressionType": "SIMPLE", "aggregate": "AVG", "column": {"column_name": "engagement_score"}}, {"expressionType": "SIMPLE", "aggregate": "AVG", "column": {"column_name": "page_views"}}], "groupby": ["source"], "row_limit": 20}, "Avg engagement score and page views by traffic source. Source ROI proxy.", 8, 5),
+        ("Form Submit Rate by Source", "ga4", "bar", {"metrics": [{"expressionType": "SIMPLE", "aggregate": "AVG", "column": {"column_name": "form_submit"}}], "groupby": ["source"]}, "Conversion rate (form submit) by source. Marketing attribution.", 6, 5),
+        ("Lead Score Distribution", "crm", "box_plot", {"metrics": [{"expressionType": "SIMPLE", "aggregate": "AVG", "column": {"column_name": "lead_score"}}], "groupby": ["program_interest"], "whisker_options": "Tukey", "row_limit": 50}, "CRM lead score by program. Quality comparison across programs.", 8, 5),
+        ("SIS GPA vs Scholarship", "sis", "box_plot", {"metrics": [{"expressionType": "SIMPLE", "aggregate": "AVG", "column": {"column_name": "gpa"}}], "groupby": ["scholarship_eligible"], "whisker_options": "Tukey"}, "Enrolled GPA by scholarship eligibility. Aid effectiveness signal.", 6, 5),
+        ("Application Velocity", "sis", "bar", {"metrics": [{"expressionType": "SIMPLE", "aggregate": "AVG", "column": {"column_name": "application_complete_days"}}], "groupby": ["recommendation_letters"], "row_limit": 10}, "Avg days to complete application by rec letters. Funnel efficiency.", 6, 5),
+        ("Program Pipeline Pivot", "crm", "pivot_table_v2", {"metrics": ["count"], "groupbyRows": ["program_interest"], "groupbyColumns": [], "row_limit": 50}, "Program lead counts. Pipeline summary for enrollment planning.", 8, 5),
     ]
 
     chart_items = []
