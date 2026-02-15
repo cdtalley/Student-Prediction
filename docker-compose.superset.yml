@@ -1,0 +1,53 @@
+# Apache Superset for Student Prediction dashboards
+# Run: docker compose -f docker-compose.superset.yml up -d
+# Then: python scripts/load_data_for_superset.py
+# Add SQLite in Superset: Data → Databases → sqlite:///superset_data/student_prediction.db
+# Access: http://localhost:8088  (admin / admin)
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: superset
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD: superset
+    volumes:
+      - superset_db:/var/lib/postgresql/data
+
+  superset-init:
+    image: apache/superset:4.0.0-dev
+    environment:
+      SUPERSET_SECRET_KEY: student-prediction-secret-key
+      DATABASE_DIALECT: postgresql
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_DB: superset
+      DATABASE_USER: superset
+      DATABASE_PASSWORD: superset
+    command: ["/bin/sh", "-c", "superset db upgrade && superset init && superset fab create-admin --username admin --firstname Admin --lastname User --email admin@localhost --password admin || true"]
+    depends_on:
+      - db
+
+  superset:
+    image: apache/superset:4.0.0-dev
+    ports:
+      - "8088:8088"
+    environment:
+      SUPERSET_SECRET_KEY: student-prediction-secret-key
+      DATABASE_DIALECT: postgresql
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_DB: superset
+      DATABASE_USER: superset
+      DATABASE_PASSWORD: superset
+    volumes:
+      - superset_home:/app/superset_home
+      - ./superset_data:/app/superset_data
+    depends_on:
+      - superset-init
+      - db
+    command: ["/bin/sh", "-c", "superset run -h 0.0.0.0 -p 8088 --with-threads"]
+
+volumes:
+  superset_db:
+  superset_home:

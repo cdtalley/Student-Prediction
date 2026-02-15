@@ -27,3 +27,6 @@ logs/
 # Next.js
 web/node_modules/
 web/.next/
+
+# Superset
+superset_data/
