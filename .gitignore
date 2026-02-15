@@ -35,7 +35,10 @@ models/
 outputs/
 logs/
 .ipynb_checkpoints/
+# Ignore notebooks except in notebooks/
 *.ipynb
+!notebooks/
+!notebooks/*.ipynb
 
 # Secrets
 .env
