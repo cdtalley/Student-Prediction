@@ -117,15 +117,20 @@ def get_stakeholder_dashboard():
     lead_model = joblib.load(MODELS_DIR / "lead_scoring_model.pkl")
     early_imp = dict(zip(early["feature_names"], early["model"].feature_importances_.tolist()))
     mid_imp = dict(zip(mid["feature_names"], mid["model"].feature_importances_.tolist()))
-    lead_imp = dict(zip(lead_model["feature_names"], lead_model["model"].feature_importances_.tolist()))
+    lead_imp = lead_model.get("feature_importance") or dict(
+        zip(lead_model["feature_names"], lead_model["model"].feature_importances_.tolist())
+    )
+
+    def _auc(m, fallback):
+        return round(m.get("test_auc") or fallback, 3)
 
     model_performance = [
-        {"model": "Retention (Early)", "auc": 0.82, "features": len(early["feature_names"])},
-        {"model": "Retention (Mid)", "auc": 0.83, "features": len(mid["feature_names"])},
-        {"model": "Lead Scoring", "auc": 0.85, "features": len(lead_model["feature_names"])},
+        {"model": "Retention (Early)", "auc": _auc(early, 0.82), "features": len(early["feature_names"])},
+        {"model": "Retention (Mid)", "auc": _auc(mid, 0.83), "features": len(mid["feature_names"])},
+        {"model": "Lead Scoring", "auc": _auc(lead_model, 0.85), "features": len(lead_model["feature_names"])},
     ]
 
-    top_retention_features = sorted(early_imp.items(), key=lambda x: x[1], reverse=True)[:8]
+    top_retention_features = sorted(mid_imp.items(), key=lambda x: x[1], reverse=True)[:8]
     top_lead_features = sorted(lead_imp.items(), key=lambda x: x[1], reverse=True)[:8]
 
     # Retention score bands
@@ -154,7 +159,13 @@ def get_stakeholder_dashboard():
     features_df = fe_lead.create_features(merged)
     feat_cols = fe_lead.get_feature_columns()
     X_lead = features_df[feat_cols].fillna(features_df[feat_cols].median()).fillna(0)
-    lead_preds = lead_model["model"].predict_proba(X_lead)[:, 1]
+    xgb_p = lead_model["model"].predict_proba(X_lead[lead_model["feature_names"]])[:, 1]
+    if lead_model.get("lgb_model") is not None:
+        w_xgb, w_lgb = lead_model.get("ensemble_weights", (0.6, 0.4))
+        lgb_p = lead_model["lgb_model"].predict_proba(X_lead[lead_model["feature_names"]])[:, 1]
+        lead_preds = w_xgb * xgb_p + w_lgb * lgb_p
+    else:
+        lead_preds = xgb_p
     band_counts_lead = {b["band"]: 0 for b in LEAD_SCORING_BANDS}
     for p in lead_preds:
         b = _get_band(float(p), LEAD_SCORING_BANDS)
@@ -204,6 +215,9 @@ MODELS_DIR = Path(__file__).parent.parent / "models"
 
 def _ensure_data_exists():
     """Raise helpful error if data/models don't exist."""
+    import os
+    if os.getenv("DATA_SOURCE", "").lower() == "bigquery":
+        return  # BigQuery source; validation happens in load_*.
     if not DATA_DIR.exists() or not (DATA_DIR / "retention_data.csv").exists():
         raise HTTPException(
             status_code=503,
@@ -227,20 +241,17 @@ def _ensure_models_exist():
 
 
 def load_retention_data():
-    """Load retention dataset with metadata."""
+    """Load retention dataset (local CSV or BigQuery if DATA_SOURCE=bigquery)."""
     _ensure_data_exists()
-    df = pd.read_csv(DATA_DIR / "retention_data.csv")
-    df["exit_date"] = pd.to_datetime(df["exit_date"], errors="coerce")
-    return df
+    from src.data_loader import load_retention_data as _load
+    return _load(DATA_DIR)
 
 
 def load_lead_data():
-    """Load GA4, CRM, SIS datasets."""
+    """Load GA4, CRM, SIS (local CSV or BigQuery if DATA_SOURCE=bigquery)."""
     _ensure_data_exists()
-    ga4 = pd.read_csv(DATA_DIR / "ga4_data.csv")
-    crm = pd.read_csv(DATA_DIR / "crm_data.csv")
-    sis = pd.read_csv(DATA_DIR / "sis_data.csv")
-    return ga4, crm, sis
+    from src.data_loader import load_lead_data as _load
+    return _load(DATA_DIR)
 
 
 def get_retention_pipeline_stats(df: pd.DataFrame) -> dict:

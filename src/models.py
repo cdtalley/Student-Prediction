@@ -78,6 +78,8 @@ class RetentionModel:
         # SHAP explainer
         self.shap_explainer = shap.TreeExplainer(self.model)
         
+        self.test_auc = auc
+        self.test_ap = ap
         results = {
             'cv_auc_mean': cv_scores.mean(),
             'cv_auc_std': cv_scores.std(),
@@ -96,6 +98,7 @@ class RetentionModel:
         """Make predictions."""
         if self.model is None:
             raise ValueError("Model not trained. Call train() first.")
+        X = X[self.feature_names].fillna(X[self.feature_names].median())
         return self.model.predict_proba(X)[:, 1]
     
     def get_shap_values(self, X: pd.DataFrame, max_samples: int = 100) -> Tuple:
@@ -112,7 +115,9 @@ class RetentionModel:
         joblib.dump({
             'model': self.model,
             'feature_names': self.feature_names,
-            'feature_set': self.feature_set
+            'feature_set': self.feature_set,
+            'test_auc': getattr(self, 'test_auc', None),
+            'test_ap': getattr(self, 'test_ap', None),
         }, filepath)
     
     @classmethod
@@ -126,11 +131,13 @@ class RetentionModel:
 
 
 class LeadScoringModel:
-    """Lead scoring model for enrollment prediction."""
+    """Lead scoring model for enrollment prediction (XGBoost + LightGBM ensemble)."""
     
     def __init__(self, random_state: int = 42):
         self.random_state = random_state
-        self.model = None
+        self.model = None  # Primary (XGB) for SHAP
+        self.lgb_model = None  # Second ensemble component
+        self.ensemble_weights = (0.6, 0.4)
         self.feature_names = []
         self.shap_explainer = None
         
@@ -185,8 +192,8 @@ class LeadScoringModel:
         y_pred_proba = 0.6 * xgb_proba + 0.4 * lgb_proba
         y_pred = (y_pred_proba > 0.5).astype(int)
         
-        # Store ensemble as primary model (use XGBoost for SHAP)
         self.model = xgb_model
+        self.lgb_model = lgb_model
         self.feature_names = list(X.columns)
         
         # Cross-validation on ensemble
@@ -223,6 +230,8 @@ class LeadScoringModel:
         # Metrics
         auc = roc_auc_score(y_test, y_pred_proba)
         ap = average_precision_score(y_test, y_pred_proba)
+        self.test_auc = auc
+        self.test_ap = ap
         
         # SHAP explainer
         self.shap_explainer = shap.TreeExplainer(self.model)
@@ -233,6 +242,7 @@ class LeadScoringModel:
             xgb_imp = xgb_model.feature_importances_[self.feature_names.index(feat)]
             lgb_imp = lgb_model.feature_importances_[self.feature_names.index(feat)]
             feature_importance[feat] = 0.6 * xgb_imp + 0.4 * lgb_imp
+        self._feature_importance = feature_importance
         
         results = {
             'cv_auc_mean': np.mean(cv_scores),
@@ -264,10 +274,15 @@ class LeadScoringModel:
         return shap_values, X_sample
     
     def save(self, filepath: str):
-        """Save model to disk."""
+        """Save model to disk (includes test metrics for API)."""
         joblib.dump({
             'model': self.model,
-            'feature_names': self.feature_names
+            'lgb_model': self.lgb_model,
+            'feature_names': self.feature_names,
+            'ensemble_weights': self.ensemble_weights,
+            'test_auc': getattr(self, 'test_auc', None),
+            'test_ap': getattr(self, 'test_ap', None),
+            'feature_importance': getattr(self, '_feature_importance', None),
         }, filepath)
     
     @classmethod
@@ -276,5 +291,7 @@ class LeadScoringModel:
         data = joblib.load(filepath)
         instance = cls()
         instance.model = data['model']
+        instance.lgb_model = data.get('lgb_model')
         instance.feature_names = data['feature_names']
+        instance.ensemble_weights = data.get('ensemble_weights', (0.6, 0.4))
         return instance

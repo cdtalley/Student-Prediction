@@ -16,15 +16,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Step 2: Create Project Directories
-
-```bash
-python setup.py
-```
-
-This creates the necessary `data/`, `models/`, and `outputs/` directories.
-
-## Step 3: Generate Data and Train Models
+## Step 2: Generate Data and Train Models
 
 ```bash
 python src/train.py
@@ -70,13 +62,20 @@ Test AP: 0.7234
 Model saved to models/retention_mid_model.pkl
 ```
 
-## Step 4: Launch Dashboard
+## Step 3: Launch Dashboard
 
 ```bash
-streamlit run dashboard.py
+# Terminal 1: Start FastAPI backend
+$env:PYTHONPATH = (Get-Location).Path
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+# Terminal 2: Start Next.js frontend
+cd web
+npm install
+npm run dev
 ```
 
-The dashboard will automatically open in your browser at `http://localhost:8501`
+Open **http://localhost:3000** for the stakeholder dashboard.
 
 ## Troubleshooting
 
@@ -93,8 +92,8 @@ If dashboard says models not found:
 
 ### Data Generation Issues
 If data generation fails:
-1. Check that `data/` directory exists (run `python setup.py`)
-2. Ensure you have write permissions in the project directory
+1. Ensure you have write permissions in the project directory
+2. `train.py` creates `data/` and `models/` automatically
 
 ## Next Steps
 
@@ -107,15 +106,17 @@ If data generation fails:
 
 ```
 Student Prediction/
-├── src/                    # Source code
-│   ├── data_generation.py  # Synthetic data generation
-│   ├── feature_engineering.py  # Feature pipelines
-│   ├── models.py          # ML models
-│   └── train.py           # Training script
-├── dashboard.py           # Streamlit dashboard
-├── config.yaml            # Configuration
-├── requirements.txt       # Dependencies
-└── README.md              # Full documentation
+├── api/main.py            # FastAPI REST API
+├── src/                   # ML pipeline
+│   ├── data_generation.py
+│   ├── feature_engineering.py
+│   ├── models.py
+│   └── train.py
+├── web/                   # Next.js dashboard
+├── scripts/               # Superset provisioning
+├── config.yaml
+├── requirements.txt
+└── README.md
 ```
 
 ## For Portfolio/Resume

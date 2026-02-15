@@ -15,18 +15,21 @@ This project addresses two critical business problems in higher education:
 ```
 Student Prediction/
 ├── api/
-│   └── main.py                # FastAPI backend (data pipeline, models, score bands)
+│   └── main.py                # FastAPI REST API (data pipeline, models, score bands)
 ├── src/
 │   ├── data_generation.py     # Synthetic data generation with realistic patterns
 │   ├── feature_engineering.py # Feature engineering pipelines
 │   ├── models.py              # XGBoost, LightGBM, ensemble models
 │   └── train.py               # Training script with validation
-├── web/                       # Next.js dashboard
+├── web/                       # Next.js 14 dashboard (primary UI)
 │   ├── src/
 │   │   ├── app/               # Pages and layout
-│   │   ├── components/        # Data pipeline, FE, model visualizations
+│   │   ├── components/        # Stakeholder dashboard, data pipeline, model viz
 │   │   └── lib/               # API helpers
 │   └── package.json
+├── scripts/
+│   ├── superset_provision.py  # Apache Superset dashboard provisioning via API
+│   └── load_data_for_superset.py # ETL for Superset SQLite
 ├── data/                      # Generated CSVs (created by train.py)
 ├── models/                    # Trained .pkl files (created by train.py)
 ├── config.yaml                # Configuration
@@ -60,17 +63,22 @@ python src/train.py
 This will:
 - Generate synthetic datasets for retention and lead scoring
 - Train early-semester retention model (15 features)
-- Train mid-semester retention model (25 features)
-- Train lead scoring ensemble model (30+ features)
+- Train mid-semester retention model (24 features)
+- Train lead scoring ensemble model (XGB+LGB, 29 features)
 - Save models to `models/` directory
 
-### Launch Dashboard
+### Launch Full Stack
 
 ```bash
-streamlit run dashboard.py
+# Terminal 1: FastAPI backend
+$env:PYTHONPATH = (Get-Location).Path
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+# Terminal 2: Next.js dashboard
+cd web && npm install && npm run dev
 ```
 
-The dashboard will open in your browser at `http://localhost:8501`
+Open **http://localhost:3000** for the stakeholder dashboard. For Apache Superset BI dashboards, see Docker setup below.
 
 ## 📊 Features
 
@@ -83,7 +91,7 @@ The dashboard will open in your browser at `http://localhost:8501`
 
 **Mid-Semester Model**
 - Enhanced predictions using mid-semester performance data
-- 25 features including GPA trends, engagement changes, and support utilization
+- 24 features including GPA trends, engagement changes, and support utilization
 - More accurate predictions with additional context
 
 **Key Features:**
@@ -153,9 +161,26 @@ Both retention and lead scoring use ABCD bands with specific actions:
 - **Retention**: A=Critical → phone+meeting, B=High → phone+advisor, C=Medium → email, D=Low → monitor
 - **Leads**: A=Hot → priority call, B=Warm → phone+email, C=Cool → nurture, D=Cold → low touch
 
+## 📊 Apache Superset (BI Dashboards)
+
+Optional Docker-based Superset for executive dashboards:
+
+```bash
+docker-compose -f docker-compose.superset.yml up -d
+python scripts/superset_provision.py   # loads data + provisions (deletes old datasets)
+```
+
+Login: `admin` / `admin` → **Executive Dashboard**
+
+## ☁️ Cloud (Optional)
+
+- **BigQuery**: Set `DATA_SOURCE=bigquery` and `GCP_PROJECT` to load from BigQuery instead of CSV.
+- **Cloud Run**: `gcloud run deploy` with the included Dockerfile.
+- See [CLOUD.md](CLOUD.md) for BigQuery setup and Cloud Functions/Run deploy.
+
 ## 🎨 Streamlit Dashboard (Legacy)
 
-The interactive Streamlit dashboard includes:
+The Streamlit dashboard (`streamlit run dashboard.py`) includes:
 
 1. **Student Retention Section**
    - Early and mid-semester risk assessments
@@ -206,7 +231,10 @@ All models handle these issues through:
 ## 🛠️ Technical Stack
 
 - **ML Frameworks**: XGBoost, LightGBM, scikit-learn
-- **Visualization**: Plotly, Streamlit
+- **API**: FastAPI, REST endpoints
+- **Frontend**: Next.js 14, React, TypeScript
+- **BI Dashboards**: Apache Superset (Docker), API-provisioned charts
+- **Visualization**: Plotly, Recharts
 - **Interpretability**: SHAP values
 - **Data Processing**: pandas, numpy
 - **Validation**: Cross-validation, stratified splits

@@ -1,0 +1,4 @@
+# Optional: for BigQuery + Cloud Run
+-r requirements.txt
+google-cloud-bigquery>=3.0
+gunicorn>=21.0

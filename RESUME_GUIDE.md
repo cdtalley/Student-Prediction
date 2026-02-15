@@ -11,11 +11,12 @@ Built end-to-end ML platform predicting student dropout risk and enrollment prob
 ## Resume Bullet Points
 
 ### Technical Implementation
-- **Developed production-ready ML pipeline** for student retention prediction with early-semester (15 features) and mid-semester (25 features) models, achieving 82-87% AUC using XGBoost with cross-validation and SMOTE for class imbalance
-- **Built ensemble lead scoring model** integrating GA4, CRM, and SIS data sources with 70% join coverage, handling missing data and sparse features to predict enrollment probability with 78-85% AUC
-- **Engineered 40+ features** from multi-source datasets, including web analytics, marketing touchpoints, and academic records, with robust handling of missing values and data quality issues
-- **Created interactive Streamlit dashboard** with real-time risk scoring, SHAP-based feature importance, and actionable intervention recommendations for student success teams
-- **Implemented comprehensive validation framework** with stratified cross-validation, proper train/test splits, and model interpretability using SHAP values for stakeholder communication
+- **Developed production-ready ML pipeline** for student retention with early-semester (15 features) and mid-semester (24 features) models, achieving 78-87% AUC using XGBoost with cross-validation and SMOTE for class imbalance
+- **Built XGBoost+LightGBM ensemble lead scoring model** integrating GA4, CRM, and SIS data sources with 70% join coverage, handling missing data and sparse features to predict enrollment probability
+- **Engineered 29 lead and 24 retention features** from multi-source datasets (web analytics, CRM touchpoints, academic records) with robust missing-value handling and data quality indicators
+- **Designed FastAPI REST API** serving model metrics, score bands, feature importance, and stakeholder aggregations; Next.js dashboard consumes API for executive KPIs and risk visualizations
+- **Provisioned Apache Superset dashboards via API**—automated creation of datasets, 25+ charts, and Executive Dashboard from Python scripts for BI stakeholders
+- **Implemented comprehensive validation** with stratified cross-validation, train/test splits, SHAP explainability, and metrics persisted in model artifacts for real-time API exposure
 
 ### Business Impact (Customize based on your experience)
 - **Enabled proactive intervention** by identifying at-risk students at semester start, allowing 2-3 month lead time for support services
@@ -25,7 +26,8 @@ Built end-to-end ML platform predicting student dropout risk and enrollment prob
 ### Technical Skills Demonstrated
 - **ML/AI**: XGBoost, LightGBM, scikit-learn, ensemble methods, SMOTE, cross-validation
 - **Data Engineering**: Feature engineering, missing data handling, multi-source data integration, ETL pipelines
-- **Visualization**: Streamlit, Plotly, interactive dashboards
+- **API & Frontend**: FastAPI, REST design, Next.js, React, TypeScript
+- **BI & Visualization**: Apache Superset, Plotly, Recharts
 - **MLOps**: Model versioning, production-ready code structure, configuration management
 - **Interpretability**: SHAP values, feature importance analysis, model explainability
 
@@ -45,7 +47,7 @@ Built end-to-end ML platform predicting student dropout risk and enrollment prob
 
 **Results**: "The models achieved 82-87% AUC for retention prediction and 78-85% AUC for lead scoring. More importantly, I built an interactive dashboard that made these predictions actionable for student success teams, with clear risk scores and intervention recommendations."
 
-**Technical Depth**: "I implemented proper validation with stratified cross-validation, handled missing data systematically, and used SHAP values for model interpretability. The code is production-ready with configuration management, proper error handling, and modular design."
+**Technical Depth**: "I implemented proper validation with stratified cross-validation, handled missing data systematically, and used SHAP for interpretability. The stack includes a FastAPI backend, Next.js stakeholder dashboard, and Superset dashboards provisioned via API. The code is production-ready with configuration management and modular design."
 
 ## LinkedIn Post Template
 
@@ -60,9 +62,9 @@ Just completed a comprehensive machine learning project predicting student reten
 - Handle severe class imbalance (15% enrollment rate)
 
 **The Solution**:
-- Built ensemble models (XGBoost + LightGBM) achieving 82-87% AUC
-- Engineered 40+ features handling missing data intelligently
-- Created interactive Streamlit dashboard for actionable insights
+- Built ensemble models (XGBoost + LightGBM) for retention and lead scoring
+- Engineered 29 lead + 24 retention features handling missing data intelligently
+- FastAPI backend + Next.js dashboard + Apache Superset for stakeholders
 
 **Key Learnings**:
 1. Feature engineering is critical when data is messy
@@ -110,4 +112,4 @@ A: "I created missing data indicators as features, used median imputation for nu
 A: "Different intervention timelines require different models. Early-semester predictions allow proactive outreach, while mid-semester predictions use performance data for more accurate risk assessment. This gives student success teams flexibility in resource allocation."
 
 **Q: How would you deploy this?**
-A: "I'd containerize the models with Docker, create API endpoints using FastAPI, and deploy to cloud infrastructure (AWS/GCP). The dashboard could be deployed on Streamlit Cloud or as a containerized service. I'd also implement model monitoring and retraining pipelines."
+A: "I'd containerize the backend with Docker, deploy the FastAPI API to cloud (AWS/GCP), and host the Next.js frontend on Vercel or as a container. Superset runs in Docker. I'd implement model monitoring, retraining pipelines, and CI/CD for the full stack."

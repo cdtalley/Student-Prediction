@@ -1,16 +1,22 @@
 """
 Training script for retention and lead scoring models.
+Set DATA_SOURCE=bigquery to load from BigQuery instead of local CSV.
 """
-
-import pandas as pd
-import numpy as np
-from pathlib import Path
-import yaml
+import os
 import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import yaml
 
 from src.data_generation import RetentionDataGenerator, LeadScoringDataGenerator, load_config
 from src.feature_engineering import RetentionFeatureEngineer, LeadScoringFeatureEngineer
 from src.models import RetentionModel, LeadScoringModel
+
+
+def _use_bigquery() -> bool:
+    return os.getenv("DATA_SOURCE", "").lower() == "bigquery"
 
 
 def train_retention_models(config: dict):
@@ -21,7 +27,11 @@ def train_retention_models(config: dict):
     
     # Load or generate data
     data_path = Path('data/retention_data.csv')
-    if data_path.exists():
+    if _use_bigquery():
+        print("Loading retention data from BigQuery...")
+        from src.data_loader import load_retention_data as _load
+        retention_df = _load(Path('data'))
+    elif data_path.exists():
         print("Loading existing retention data...")
         retention_df = pd.read_csv(data_path)
     else:
@@ -113,8 +123,12 @@ def train_lead_scoring_model(config: dict):
     ga4_path = data_dir / 'ga4_data.csv'
     crm_path = data_dir / 'crm_data.csv'
     sis_path = data_dir / 'sis_data.csv'
-    
-    if all(p.exists() for p in [ga4_path, crm_path, sis_path]):
+
+    if _use_bigquery():
+        print("Loading lead scoring data from BigQuery...")
+        from src.data_loader import load_lead_data as _load
+        ga4_df, crm_df, sis_df = _load(data_dir)
+    elif all(p.exists() for p in [ga4_path, crm_path, sis_path]):
         print("Loading existing lead scoring data...")
         ga4_df = pd.read_csv(ga4_path)
         crm_df = pd.read_csv(crm_path)
