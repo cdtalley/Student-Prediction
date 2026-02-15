@@ -5,9 +5,9 @@ Creates realistic datasets that mirror real-world data quality issues.
 
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from typing import Dict, Tuple
 import yaml
-from pathlib import Path
 
 
 class RetentionDataGenerator:
@@ -285,28 +285,33 @@ class LeadScoringDataGenerator:
         return ga4_df, crm_df, sis_df
 
 
-def load_config(config_path: str = 'config.yaml') -> Dict:
-    """Load configuration from YAML file."""
+def load_config(config_path: str | None = None) -> Dict:
+    """Load configuration from YAML file. Uses project root if path not given."""
+    if config_path is None:
+        config_path = Path(__file__).parent.parent / "config.yaml"
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
 
 if __name__ == '__main__':
     config = load_config()
-    
+    project_root = Path(__file__).parent.parent
+    data_dir = project_root / "data"
+    data_dir.mkdir(exist_ok=True)
+
     # Generate retention data
     retention_gen = RetentionDataGenerator(config)
     retention_df = retention_gen.generate()
-    retention_df.to_csv('data/retention_data.csv', index=False)
+    retention_df.to_csv(data_dir / "retention_data.csv", index=False)
     print(f"Generated retention data: {len(retention_df)} records")
     
     # Generate lead scoring data
     lead_gen = LeadScoringDataGenerator(config)
     ga4_df, crm_df, sis_df = lead_gen.generate()
     
-    ga4_df.to_csv('data/ga4_data.csv', index=False)
-    crm_df.to_csv('data/crm_data.csv', index=False)
-    sis_df.to_csv('data/sis_data.csv', index=False)
+    ga4_df.to_csv(data_dir / "ga4_data.csv", index=False)
+    crm_df.to_csv(data_dir / "crm_data.csv", index=False)
+    sis_df.to_csv(data_dir / "sis_data.csv", index=False)
     
     print(f"Generated GA4 data: {len(ga4_df)} records")
     print(f"Generated CRM data: {len(crm_df)} records ({len(crm_df)/len(ga4_df)*100:.1f}% coverage)")
