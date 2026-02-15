@@ -15,9 +15,11 @@ class RetentionDataGenerator:
     
     def __init__(self, config: Dict):
         self.config = config
-        self.n_students = config['retention']['n_students']
-        self.n_semesters = config['retention']['n_semesters']
-        self.missing_exit_rate = config['retention']['missing_exit_rate']
+        data_config = config.get('data', config)
+        retention_config = data_config.get('retention', config)
+        self.n_students = retention_config.get('n_students', 10000)
+        self.n_semesters = retention_config.get('n_semesters', 4)
+        self.missing_exit_rate = retention_config.get('missing_exit_rate', 0.35)
         self.rng = np.random.RandomState(42)
         
     def generate(self) -> pd.DataFrame:
@@ -152,8 +154,10 @@ class LeadScoringDataGenerator:
     
     def __init__(self, config: Dict):
         self.config = config
-        self.n_leads = config['lead_scoring']['n_leads']
-        self.enrollment_rate = config['lead_scoring']['enrollment_rate']
+        data_config = config.get('data', config)
+        lead_config = data_config.get('lead_scoring', config)
+        self.n_leads = lead_config.get('n_leads', 15000)
+        self.enrollment_rate = lead_config.get('enrollment_rate', 0.15)
         self.rng = np.random.RandomState(42)
         
     def generate(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:

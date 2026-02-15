@@ -53,15 +53,10 @@ class RetentionModel:
             subsample=0.8,
             colsample_bytree=0.8,
             random_state=self.random_state,
-            eval_metric='auc',
-            early_stopping_rounds=20
+            eval_metric='auc'
         )
         
-        self.model.fit(
-            X_train, y_train,
-            eval_set=[(X_test, y_test)],
-            verbose=False
-        )
+        self.model.fit(X_train, y_train, verbose=False)
         
         self.feature_names = list(X.columns)
         
@@ -141,6 +136,10 @@ class LeadScoringModel:
         
     def train(self, X: pd.DataFrame, y: pd.Series, use_smote: bool = True) -> Dict:
         """Train lead scoring model with cross-validation."""
+        # Fill any remaining NaNs (SMOTE requires finite values)
+        X = X.fillna(X.median())
+        X = X.replace([np.inf, -np.inf], np.nan).fillna(X.median())
+        
         # Handle class imbalance (enrollment is rare)
         if use_smote:
             smote = SMOTE(random_state=self.random_state)
@@ -178,7 +177,7 @@ class LeadScoringModel:
         )
         
         xgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
-        lgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
+        lgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)])
         
         # Ensemble predictions (weighted average)
         xgb_proba = xgb_model.predict_proba(X_test)[:, 1]
@@ -213,7 +212,7 @@ class LeadScoringModel:
             )
             
             xgb_cv.fit(X_cv_train, y_cv_train, verbose=False)
-            lgb_cv.fit(X_cv_train, y_cv_train, verbose=False)
+            lgb_cv.fit(X_cv_train, y_cv_train)
             
             xgb_p = xgb_cv.predict_proba(X_cv_val)[:, 1]
             lgb_p = lgb_cv.predict_proba(X_cv_val)[:, 1]

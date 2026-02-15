@@ -52,7 +52,8 @@ class RetentionFeatureEngineer:
         )
         
         # Course load relative to student type
-        first_sem['course_load_ratio'] = first_sem['course_load'] / (15 if ~first_sem['part_time'] else 9)
+        expected_load = np.where(first_sem['part_time'] == 1, 9, 15)
+        first_sem['course_load_ratio'] = first_sem['course_load'] / expected_load
         
         # Missing data indicators
         first_sem['missing_early_attendance'] = first_sem['early_attendance'].isna().astype(int)
