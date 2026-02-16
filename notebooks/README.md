@@ -4,8 +4,9 @@
 
 ## How to run
 
-1. **Install dependencies** (from project root):
+1. **Activate your project venv** and install dependencies (from project root):
    ```bash
+   .\venv\Scripts\activate   # Windows
    pip install -r requirements.txt
    ```
 
@@ -14,17 +15,17 @@
    python src/train.py
    ```
 
-3. **Open the notebook** and run cells **in order**:
-   - **Cell 1**: Run first — installs xgboost, lightgbm, imblearn, shap if missing. If it installs anything, restart the kernel and run again.
-   - **Cell 2** (Setup): Sets project path and imports.
-   - **Remaining cells**: Run all.
+3. **Open the notebook** — **use your project venv as the kernel** (not Anaconda base):
+   - In Cursor/VS Code: Kernel picker (top right) → **Select Interpreter** → choose `.\venv\Scripts\python.exe`
+   - Or: `.\venv\Scripts\python.exe -m ipykernel install --user --name=student-prediction` then pick that kernel
+   - Run cells in order (Cell 1 first; if it installs packages, restart kernel and run again)
 
-From terminal:
+From terminal (with venv activated):
 ```bash
 jupyter notebook notebooks/stakeholder_demo.ipynb
 ```
 
-Or in VS Code / Cursor: open `stakeholder_demo.ipynb` → Select kernel (Python with project venv) → Run All.
+**If you see `numpy.core.multiarray failed to import`:** You're using the wrong kernel (likely Anaconda). Switch to your project `venv` Python.
 
 ## What it covers
 
