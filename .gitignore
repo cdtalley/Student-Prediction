@@ -11,11 +11,12 @@ htmlcov/
 dist/
 build/
 
-# Virtual envs
+# Virtual envs (venv, .venv, env, etc.)
 env/
 venv/
 ENV/
-.venv
+.venv/
+.python-version
 
 # IDE
 .idea/

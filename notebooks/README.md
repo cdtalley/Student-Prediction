@@ -4,17 +4,27 @@
 
 ## How to run
 
-From project root:
+1. **Install dependencies** (from project root):
+   ```bash
+   pip install -r requirements.txt
+   ```
 
+2. **Generate data and models** (if not already done):
+   ```bash
+   python src/train.py
+   ```
+
+3. **Open the notebook** and run cells **in order**:
+   - **Cell 1**: Run first — installs xgboost, lightgbm, imblearn, shap if missing. If it installs anything, restart the kernel and run again.
+   - **Cell 2** (Setup): Sets project path and imports.
+   - **Remaining cells**: Run all.
+
+From terminal:
 ```bash
-# Ensure data and models exist (or will be generated)
-python src/train.py
-
-# Launch Jupyter
 jupyter notebook notebooks/stakeholder_demo.ipynb
 ```
 
-Or with VS Code / Cursor: open `stakeholder_demo.ipynb` and run all cells.
+Or in VS Code / Cursor: open `stakeholder_demo.ipynb` → Select kernel (Python with project venv) → Run All.
 
 ## What it covers
 
