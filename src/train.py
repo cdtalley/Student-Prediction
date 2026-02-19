@@ -1,9 +1,11 @@
 """
 Training script for retention and lead scoring models.
 Set DATA_SOURCE=bigquery to load from BigQuery instead of local CSV.
+Set TUNE=1 to run Optuna hyperparameter tuning before training (saves to models/tuned_params.json).
 """
 import os
 import sys
+import json
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +19,65 @@ from src.models import RetentionModel, LeadScoringModel
 
 def _use_bigquery() -> bool:
     return os.getenv("DATA_SOURCE", "").lower() == "bigquery"
+
+
+def _load_tuned_params() -> dict:
+    """Load tuned params from models/tuned_params.json if it exists."""
+    path = Path("models/tuned_params.json")
+    if path.exists():
+        with open(path) as f:
+            return json.load(f)
+    return {}
+
+
+def _run_tuning(config: dict) -> None:
+    """Run Optuna tuning for retention and lead scoring; save to models/tuned_params.json."""
+    from src.tuning import tune_retention_model, tune_lead_scoring_model
+
+    Path("models").mkdir(exist_ok=True)
+
+    # Retention data
+    data_path = Path("data/retention_data.csv")
+    if data_path.exists():
+        retention_df = pd.read_csv(data_path)
+    else:
+        retention_df = RetentionDataGenerator(config).generate()
+    fe = RetentionFeatureEngineer()
+    mid_feat = fe.create_mid_semester_features(retention_df)
+    mid_cols = fe.get_feature_columns("mid")
+    X_mid = mid_feat[mid_cols].fillna(mid_feat[mid_cols].median())
+    y_mid = mid_feat["withdrawn"]
+
+    print("Tuning retention (80 trials)...")
+    ret_tune = tune_retention_model(X_mid, y_mid, n_trials=80)
+    print(f"  Best CV AUC: {ret_tune['best_value']:.4f}")
+
+    # Lead data
+    data_dir = Path("data")
+    ga4_df = pd.read_csv(data_dir / "ga4_data.csv")
+    crm_df = pd.read_csv(data_dir / "crm_data.csv")
+    sis_df = pd.read_csv(data_dir / "sis_data.csv")
+    fe_lead = LeadScoringFeatureEngineer()
+    merged = fe_lead.merge_sources(ga4_df, crm_df, sis_df)
+    lead_feat = fe_lead.create_features(merged)
+    X_lead = lead_feat[fe_lead.get_feature_columns()].fillna(0)
+    y_lead = lead_feat["enrolled"]
+
+    print("Tuning lead scoring (60 trials)...")
+    lead_tune = tune_lead_scoring_model(X_lead, y_lead, n_trials=60)
+    print(f"  Best CV AUC: {lead_tune['best_value']:.4f}")
+
+    tuned_params = {
+        "retention": ret_tune["best_params"],
+        "lead": {
+            "best_xgb_params": lead_tune["best_xgb_params"],
+            "best_lgb_params": lead_tune["best_lgb_params"],
+            "ensemble_weight": lead_tune["ensemble_weight"],
+        },
+    }
+    with open(Path("models/tuned_params.json"), "w") as f:
+        json.dump(tuned_params, f, indent=2)
+    print("Saved models/tuned_params.json")
 
 
 def train_retention_models(config: dict):
@@ -62,7 +123,8 @@ def train_retention_models(config: dict):
     print(f"Training samples: {len(X_early)}")
     
     early_model = RetentionModel(feature_set='early')
-    early_results = early_model.train(X_early, y_early)
+    tuned = _load_tuned_params()
+    early_results = early_model.train(X_early, y_early, params=tuned.get('retention'))
     
     print(f"\nCross-validation AUC: {early_results['cv_auc_mean']:.4f} "
           f"(±{early_results['cv_auc_std']:.4f})")
@@ -89,7 +151,8 @@ def train_retention_models(config: dict):
     print(f"Training samples: {len(X_mid)}")
     
     mid_model = RetentionModel(feature_set='mid')
-    mid_results = mid_model.train(X_mid, y_mid)
+    tuned = _load_tuned_params()
+    mid_results = mid_model.train(X_mid, y_mid, params=tuned.get('retention'))
     
     print(f"\nCross-validation AUC: {mid_results['cv_auc_mean']:.4f} "
           f"(±{mid_results['cv_auc_std']:.4f})")
@@ -162,7 +225,8 @@ def train_lead_scoring_model(config: dict):
     
     # Train model
     model = LeadScoringModel()
-    results = model.train(X, y)
+    tuned = _load_tuned_params()
+    results = model.train(X, y, params=tuned.get('lead'))
     
     print(f"\nCross-validation AUC: {results['cv_auc_mean']:.4f} "
           f"(±{results['cv_auc_std']:.4f})")
@@ -188,7 +252,23 @@ def train_lead_scoring_model(config: dict):
 
 if __name__ == '__main__':
     config = load_config()
-    
+
+    if os.getenv("TUNE", "").lower() in ("1", "true", "yes"):
+        print("Running hyperparameter tuning (Optuna)...")
+        # Ensure data exists
+        if not Path("data/retention_data.csv").exists():
+            gen = RetentionDataGenerator(config)
+            Path("data").mkdir(exist_ok=True)
+            gen.generate().to_csv("data/retention_data.csv", index=False)
+        if not Path("data/ga4_data.csv").exists():
+            gen = LeadScoringDataGenerator(config)
+            ga4, crm, sis = gen.generate()
+            ga4.to_csv("data/ga4_data.csv", index=False)
+            crm.to_csv("data/crm_data.csv", index=False)
+            sis.to_csv("data/sis_data.csv", index=False)
+        _run_tuning(config)
+        print()
+
     # Train retention models
     early_model, mid_model, early_results, mid_results = train_retention_models(config)
     

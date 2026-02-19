@@ -29,8 +29,14 @@ class RetentionModel:
         self.scaler = None
         self.shap_explainer = None
         
-    def train(self, X: pd.DataFrame, y: pd.Series, use_smote: bool = True) -> Dict:
-        """Train retention model with cross-validation."""
+    def train(
+        self, X: pd.DataFrame, y: pd.Series, use_smote: bool = True, params: dict = None
+    ) -> Dict:
+        """Train retention model with cross-validation.
+        Args:
+            params: Optional tuned hyperparameters (from src.tuning.tune_retention_model).
+                    If None, uses sensible defaults.
+        """
         # Handle class imbalance
         if use_smote:
             smote = SMOTE(random_state=self.random_state)
@@ -39,22 +45,19 @@ class RetentionModel:
             y_resampled = pd.Series(y_resampled)
         else:
             X_resampled, y_resampled = X, y
-        
+
         # Train-test split
         X_train, X_test, y_train, y_test = train_test_split(
             X_resampled, y_resampled, test_size=0.2, random_state=self.random_state, stratify=y_resampled
         )
-        
-        # Train XGBoost model
-        self.model = XGBClassifier(
-            n_estimators=200,
-            max_depth=6,
-            learning_rate=0.05,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            random_state=self.random_state,
-            eval_metric='auc'
+
+        # Use tuned params or defaults
+        default_params = dict(
+            n_estimators=200, max_depth=6, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.8, random_state=self.random_state, eval_metric='auc'
         )
+        model_params = {**default_params, **(params or {})}
+        self.model = XGBClassifier(**model_params)
         
         self.model.fit(X_train, y_train, verbose=False)
         
@@ -141,12 +144,19 @@ class LeadScoringModel:
         self.feature_names = []
         self.shap_explainer = None
         
-    def train(self, X: pd.DataFrame, y: pd.Series, use_smote: bool = True) -> Dict:
-        """Train lead scoring model with cross-validation."""
+    def train(
+        self, X: pd.DataFrame, y: pd.Series, use_smote: bool = True, params: dict = None
+    ) -> Dict:
+        """Train lead scoring model with cross-validation.
+        Args:
+            params: Optional from src.tuning.tune_lead_scoring_model: dict with
+                    best_xgb_params, best_lgb_params, ensemble_weight.
+                    If None, uses sensible defaults.
+        """
         # Fill any remaining NaNs (SMOTE requires finite values)
         X = X.fillna(X.median())
         X = X.replace([np.inf, -np.inf], np.nan).fillna(X.median())
-        
+
         # Handle class imbalance (enrollment is rare)
         if use_smote:
             smote = SMOTE(random_state=self.random_state)
@@ -155,41 +165,44 @@ class LeadScoringModel:
             y_resampled = pd.Series(y_resampled)
         else:
             X_resampled, y_resampled = X, y
-        
+
         # Train-test split
         X_train, X_test, y_train, y_test = train_test_split(
             X_resampled, y_resampled, test_size=0.2, random_state=self.random_state, stratify=y_resampled
         )
-        
-        # Ensemble: XGBoost + LightGBM
-        xgb_model = XGBClassifier(
-            n_estimators=200,
-            max_depth=5,
-            learning_rate=0.05,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            random_state=self.random_state,
-            eval_metric='auc',
-            early_stopping_rounds=20
-        )
-        
-        lgb_model = LGBMClassifier(
-            n_estimators=200,
-            max_depth=5,
-            learning_rate=0.05,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            random_state=self.random_state,
-            verbose=-1
-        )
+
+        # Use tuned params or defaults
+        if params:
+            xgb_params = dict(params.get("best_xgb_params", {}))
+            lgb_params = dict(params.get("best_lgb_params", {}))
+            self.ensemble_weights = (
+                params.get("ensemble_weight", 0.6),
+                1 - params.get("ensemble_weight", 0.6),
+            )
+        else:
+            xgb_params = dict(
+                n_estimators=200, max_depth=5, learning_rate=0.05,
+                subsample=0.8, colsample_bytree=0.8, random_state=self.random_state,
+                eval_metric='auc', early_stopping_rounds=20
+            )
+            lgb_params = dict(
+                n_estimators=200, max_depth=5, learning_rate=0.05,
+                subsample=0.8, colsample_bytree=0.8, random_state=self.random_state, verbose=-1
+            )
+            self.ensemble_weights = (0.6, 0.4)
+
+        xgb_params.setdefault("early_stopping_rounds", 20)
+        xgb_model = XGBClassifier(**xgb_params)
+        lgb_model = LGBMClassifier(**lgb_params)
         
         xgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
         lgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)])
         
         # Ensemble predictions (weighted average)
+        w_xgb, w_lgb = self.ensemble_weights
         xgb_proba = xgb_model.predict_proba(X_test)[:, 1]
         lgb_proba = lgb_model.predict_proba(X_test)[:, 1]
-        y_pred_proba = 0.6 * xgb_proba + 0.4 * lgb_proba
+        y_pred_proba = w_xgb * xgb_proba + w_lgb * lgb_proba
         y_pred = (y_pred_proba > 0.5).astype(int)
         
         self.model = xgb_model
@@ -200,7 +213,7 @@ class LeadScoringModel:
         def ensemble_predict(X_cv):
             xgb_p = xgb_model.predict_proba(X_cv)[:, 1]
             lgb_p = lgb_model.predict_proba(X_cv)[:, 1]
-            return 0.6 * xgb_p + 0.4 * lgb_p
+            return w_xgb * xgb_p + w_lgb * lgb_p
         
         # Manual CV for ensemble
         cv_scores = []
@@ -209,21 +222,13 @@ class LeadScoringModel:
             X_cv_train, X_cv_val = X_resampled.iloc[train_idx], X_resampled.iloc[val_idx]
             y_cv_train, y_cv_val = y_resampled.iloc[train_idx], y_resampled.iloc[val_idx]
             
-            xgb_cv = XGBClassifier(
-                n_estimators=200, max_depth=5, learning_rate=0.05,
-                random_state=self.random_state, eval_metric='auc'
-            )
-            lgb_cv = LGBMClassifier(
-                n_estimators=200, max_depth=5, learning_rate=0.05,
-                random_state=self.random_state, verbose=-1
-            )
-            
+            xgb_cv = XGBClassifier(**{k: v for k, v in xgb_params.items() if k != "early_stopping_rounds"})
+            lgb_cv = LGBMClassifier(**lgb_params)
             xgb_cv.fit(X_cv_train, y_cv_train, verbose=False)
             lgb_cv.fit(X_cv_train, y_cv_train)
-            
             xgb_p = xgb_cv.predict_proba(X_cv_val)[:, 1]
             lgb_p = lgb_cv.predict_proba(X_cv_val)[:, 1]
-            ensemble_p = 0.6 * xgb_p + 0.4 * lgb_p
+            ensemble_p = w_xgb * xgb_p + w_lgb * lgb_p
             
             cv_scores.append(roc_auc_score(y_cv_val, ensemble_p))
         
@@ -241,7 +246,7 @@ class LeadScoringModel:
         for feat in self.feature_names:
             xgb_imp = xgb_model.feature_importances_[self.feature_names.index(feat)]
             lgb_imp = lgb_model.feature_importances_[self.feature_names.index(feat)]
-            feature_importance[feat] = 0.6 * xgb_imp + 0.4 * lgb_imp
+            feature_importance[feat] = w_xgb * xgb_imp + w_lgb * lgb_imp
         self._feature_importance = feature_importance
         
         results = {
@@ -259,10 +264,16 @@ class LeadScoringModel:
         return results
     
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        """Make predictions."""
+        """Make predictions (ensemble if lgb_model exists)."""
         if self.model is None:
             raise ValueError("Model not trained. Call train() first.")
-        return self.model.predict_proba(X)[:, 1]
+        X = X[self.feature_names].fillna(X[self.feature_names].median())
+        xgb_p = self.model.predict_proba(X)[:, 1]
+        if self.lgb_model is not None:
+            lgb_p = self.lgb_model.predict_proba(X)[:, 1]
+            w_xgb, w_lgb = self.ensemble_weights
+            return w_xgb * xgb_p + w_lgb * lgb_p
+        return xgb_p
     
     def get_shap_values(self, X: pd.DataFrame, max_samples: int = 100) -> Tuple:
         """Get SHAP values for model interpretation."""
