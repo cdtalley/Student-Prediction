@@ -15,7 +15,7 @@ ML platform predicting student dropout risk and enrollment probability with XGBo
 | Dimension | Implementation |
 |-----------|----------------|
 | **ML** | Retention early/mid models (15 vs 24 features), lead scoring XGB+LGB ensemble, SMOTE, CV, SHAP, metrics persisted in artifacts |
-| **Data** | Multi-source joins (70% coverage), missing-data indicators, realistic quality issues (35% missing exit dates, sparse SIS) |
+| **Data** | Multi-source joins (70% coverage), missing-data indicators, realistic quality issues (35% missing exit dates, sparse SIS). Design assumes event→session→user aggregation upstream; pipeline scheduling (ingestion → aggregation → merge → train/score) and idempotency documented in notebook. |
 | **Engineering** | FastAPI REST API, Next.js dashboard, Superset provisioning via API (datasets, ~25 charts, dashboards) |
 | **Cloud (optional)** | BigQuery data source, Cloud Run deployment, config-driven (off by default for demo) |
 | **Interpretability** | SHAP values, feature importance, ABCD risk bands with intervention recommendations |
