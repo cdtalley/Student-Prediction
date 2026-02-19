@@ -3,6 +3,14 @@ data:
     n_students: 10000
     n_semesters: 4
     missing_exit_rate: 0.35
+    n_schools: 6
+    school_names:
+      - "College of Arts & Sciences"
+      - "School of Engineering"
+      - "School of Business"
+      - "School of Health"
+      - "School of Education"
+      - "College of Liberal Arts"
   lead_scoring:
     n_leads: 15000
     enrollment_rate: 0.15

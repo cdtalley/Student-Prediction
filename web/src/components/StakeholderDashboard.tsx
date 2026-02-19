@@ -72,7 +72,20 @@ interface StakeholderData {
     }>;
     top_features: Array<{ name: string; importance: number }>;
     engagement_summary: Array<{ metric: string; value: number }>;
+    lead_scores_sample?: Array<{
+      lead_id: number;
+      score_1_100: number;
+      band: string;
+      band_label: string;
+      reasons: string[];
+      enrolled: number;
+    }>;
   };
+  coach_list_summary?: Array<{
+    school_id: number;
+    school_name: string;
+    at_risk_count: number;
+  }>;
   model_performance: Array<{
     model: string;
     auc: number;
@@ -526,6 +539,75 @@ export default function StakeholderDashboard() {
           </div>
         </div>
       </section>
+
+      {/* Coach list: actionable at-risk students per school */}
+      {data.coach_list_summary && data.coach_list_summary.length > 0 && (
+        <section className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
+          <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-amber-400" />
+            Coach List — At-Risk Students by School
+          </h3>
+          <p className="text-sm text-gray-500 mb-4">
+            Top 50 highest-risk students per school for early intervention. Use API /api/coach-list with school_id and top_n for full list and reasons.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {data.coach_list_summary.map((s) => (
+              <div
+                key={s.school_id}
+                className="rounded-lg bg-slate-800/50 border border-amber-500/20 p-4"
+              >
+                <p className="text-xs text-gray-500 truncate" title={s.school_name}>
+                  {s.school_name}
+                </p>
+                <p className="text-2xl font-bold text-amber-400 mt-1">{s.at_risk_count}</p>
+                <p className="text-xs text-gray-500">at-risk students</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Lead score 1–100 with reasons */}
+      {data.lead_scoring.lead_scores_sample && data.lead_scoring.lead_scores_sample.length > 0 && (
+        <section className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
+          <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+            <Target className="w-5 h-5 text-emerald-400" />
+            Lead Score 1–100 (Sample) — With Reasons
+          </h3>
+          <p className="text-sm text-gray-500 mb-4">
+            Score from 1 (cold) to 100 (hot) based on engagement, form submits, and CRM/SIS indicators. Use /api/lead-scores?limit= for full list.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b border-white/10">
+                  <th className="pb-2 pr-4">Lead ID</th>
+                  <th className="pb-2 pr-4">Score</th>
+                  <th className="pb-2 pr-4">Band</th>
+                  <th className="pb-2">Reasons</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.lead_scoring.lead_scores_sample.slice(0, 15).map((lead) => (
+                  <tr key={lead.lead_id} className="border-b border-white/5">
+                    <td className="py-2 pr-4 font-mono text-cyan-400">{lead.lead_id}</td>
+                    <td className="py-2 pr-4">
+                      <span className="font-bold text-white">{lead.score_1_100}</span>
+                      <span className="text-gray-500">/100</span>
+                    </td>
+                    <td className="py-2 pr-4">
+                      <span className="text-gray-400">{lead.band_label}</span>
+                    </td>
+                    <td className="py-2 text-gray-400">
+                      {lead.reasons.length ? lead.reasons.slice(0, 4).join(' • ') : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* Row 6: Feature importance side by side */}
       <section className="grid lg:grid-cols-2 gap-6">

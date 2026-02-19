@@ -20,13 +20,25 @@ class RetentionDataGenerator:
         self.n_students = retention_config.get('n_students', 10000)
         self.n_semesters = retention_config.get('n_semesters', 4)
         self.missing_exit_rate = retention_config.get('missing_exit_rate', 0.35)
+        self.school_names = retention_config.get('school_names', [
+            "College of Arts & Sciences", "School of Engineering", "School of Business",
+            "School of Health", "School of Education", "College of Liberal Arts"
+        ])
+        self.n_schools = retention_config.get('n_schools', len(self.school_names))
+        self.n_schools = min(self.n_schools, len(self.school_names))
         self.rng = np.random.RandomState(42)
         
     def generate(self) -> pd.DataFrame:
         """Generate complete retention dataset."""
         data = []
-        
+        # Assign each student to a school (weighted so larger schools have more students)
+        school_weights = self.rng.dirichlet(np.ones(self.n_schools) * 2)
+        student_schools = self.rng.choice(
+            self.n_schools, size=self.n_students, p=school_weights, replace=True
+        )
+
         for student_id in range(self.n_students):
+            school_id = int(student_schools[student_id])
             # Student demographics
             age = self.rng.normal(20, 3)
             age = max(17, min(35, age))
@@ -108,6 +120,7 @@ class RetentionDataGenerator:
                 # Create record
                 record = {
                     'student_id': student_id,
+                    'school_id': school_id,
                     'semester': sem,
                     'age': age,
                     'gpa_high_school': gpa_high_school,

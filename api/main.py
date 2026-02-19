@@ -186,6 +186,28 @@ def get_stakeholder_dashboard():
         {"metric": "Brochure Download %", "value": round(ga4["brochure_download"].mean() * 100, 1)},
     ]
 
+    # Coach list: at-risk students per school (actionable intervention list)
+    import yaml as _yaml
+    from src.insights import build_coach_list as build_coach_list_impl, build_lead_scores_with_reasons
+    _config_path = Path(__file__).parent.parent / "config.yaml"
+    _school_names = []
+    if _config_path.exists():
+        with open(_config_path) as _f:
+            _school_names = _yaml.safe_load(_f).get("data", {}).get("retention", {}).get("school_names", [])
+    coach_list = build_coach_list_impl(
+        df, mid_feat, mid_preds,
+        school_names=_school_names or None,
+        top_n=50,
+    )
+    coach_list_summary = [
+        {"school_id": s["school_id"], "school_name": s["school_name"], "at_risk_count": s["count"]}
+        for s in coach_list
+    ]
+
+    # Lead scores 1-100 with reasons (sample for dashboard)
+    lead_preds_for_insights = lead_preds  # already computed above
+    lead_scores_sample = build_lead_scores_with_reasons(features_df, lead_preds_for_insights, limit=25)
+
     return {
         "retention": {
             "stats": retention_stats,
@@ -203,7 +225,9 @@ def get_stakeholder_dashboard():
             "bands": lead_bands_chart,
             "top_features": [{"name": n.replace("_", " "), "importance": round(v * 100, 2)} for n, v in top_lead_features],
             "engagement_summary": engagement_summary,
+            "lead_scores_sample": lead_scores_sample,
         },
+        "coach_list_summary": coach_list_summary,
         "model_performance": model_performance,
     }
 
@@ -621,6 +645,70 @@ def get_lead_score_bands():
         })
 
     return {"bands": bands_with_counts, "total": n}
+
+
+@app.get("/api/coach-list")
+def get_coach_list(school_id: int | None = None, top_n: int = 100):
+    """
+    Actionable coach list: most at-risk students per school for early intervention.
+    Returns per-school lists with student_id, risk probability, band, and reasons.
+    """
+    import joblib
+    import yaml
+    from src.feature_engineering import RetentionFeatureEngineer
+    from src.insights import build_coach_list as build
+
+    _ensure_models_exist()
+    df = load_retention_data()
+    config_path = Path(__file__).parent.parent / "config.yaml"
+    school_names = []
+    if config_path.exists():
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+            school_names = config.get("data", {}).get("retention", {}).get("school_names", [])
+
+    fe = RetentionFeatureEngineer()
+    mid_feat = fe.create_mid_semester_features(df)
+    mid_cols = fe.get_feature_columns("mid")
+    X = mid_feat[mid_cols].fillna(mid_feat[mid_cols].median()).fillna(0)
+    mid = joblib.load(MODELS_DIR / "retention_mid_model.pkl")
+    preds = mid["model"].predict_proba(X)[:, 1]
+    coach_list = build(
+        df, mid_feat, preds,
+        school_names=school_names or None,
+        top_n=min(top_n, 500),
+        school_id_filter=school_id,
+    )
+    return {"schools": coach_list, "top_n": top_n}
+
+
+@app.get("/api/lead-scores")
+def get_lead_scores(limit: int = 500):
+    """
+    Lead scoring with score 1-100 and reasons (indicators that drove the score).
+    Returns list of leads with score_1_100, band, and reasons for prioritization.
+    """
+    import joblib
+    from src.feature_engineering import LeadScoringFeatureEngineer
+    from src.insights import build_lead_scores_with_reasons as build
+
+    _ensure_models_exist()
+    ga4, crm, sis = load_lead_data()
+    fe = LeadScoringFeatureEngineer()
+    merged = fe.merge_sources(ga4, crm, sis)
+    features_df = fe.create_features(merged)
+    feat_cols = fe.get_feature_columns()
+    X = features_df[feat_cols].fillna(features_df[feat_cols].median()).fillna(0)
+    lead_model = joblib.load(MODELS_DIR / "lead_scoring_model.pkl")
+    xgb_p = lead_model["model"].predict_proba(X[lead_model["feature_names"]])[:, 1]
+    if lead_model.get("lgb_model") is not None:
+        w_xgb, w_lgb = lead_model.get("ensemble_weights", (0.6, 0.4))
+        lgb_p = lead_model["lgb_model"].predict_proba(X[lead_model["feature_names"]])[:, 1]
+        preds = w_xgb * xgb_p + w_lgb * lgb_p
+    else:
+        preds = xgb_p
+    rows = build(features_df, preds, limit=min(limit, 2000))
+    return {"leads": rows, "limit": limit}
 
 
 @app.post("/api/predict/retention")
