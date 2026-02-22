@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { Target, Phone } from 'lucide-react';
+import { ChartEmptyState } from '@/components/ChartEmptyState';
 
 interface LeadBand {
   band: string;
@@ -148,6 +149,9 @@ export default function ModelLead() {
       <section className="bg-slate-900/30 border border-white/5 rounded-xl p-6">
         <h2 className="text-lg font-semibold text-white mb-4">Feature Importance</h2>
         <div className="h-96">
+          {!impData?.length ? (
+            <ChartEmptyState message="No feature importance data" className="min-h-[240px]" />
+          ) : (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={impData} layout="vertical" margin={{ left: 140 }}>
               <XAxis type="number" tick={{ fontSize: 11 }} stroke="#6b7280" />
@@ -168,6 +172,7 @@ export default function ModelLead() {
               <Bar dataKey="value" fill="#34d399" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
+          )}
         </div>
       </section>
     </div>

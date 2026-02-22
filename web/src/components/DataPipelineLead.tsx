@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetchWithCache } from '@/lib/api';
+import { DataPipelineLoading, DataPipelineError } from '@/components/DataPipelineShell';
+import { ChartEmptyState } from '@/components/ChartEmptyState';
 import {
   BarChart,
   Bar,
@@ -44,36 +46,26 @@ export default function DataPipelineLead() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<LeadPipelineData>('/api/data-pipeline/lead-scoring')
+    apiFetchWithCache<LeadPipelineData>('/api/data-pipeline/lead-scoring')
       .then(setData)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-pulse text-cyan-400">Loading pipeline data...</div>
-      </div>
-    );
-  }
-  if (error || !data) {
-    return (
-      <div className="text-amber-500">
-        {error || 'Failed to load data.'} Ensure the FastAPI backend is running on port 8000.
-      </div>
-    );
-  }
+  if (loading) return <DataPipelineLoading pipeline="lead" />;
+  if (error || !data) return <DataPipelineError error={error || 'Failed to load data.'} />;
 
   const { join_coverage, source_breakdown, ga4_distributions, real_world_issues } = data;
 
-  const sourcePieData = Object.entries(source_breakdown).map(([name, value]) => ({
-    name,
-    value,
-    fill: ['#22d3ee', '#34d399', '#fbbf24', '#a78bfa', '#f472b6'][
-      Object.keys(source_breakdown).indexOf(name) % 5
-    ],
-  }));
+  const sourcePieData = (source_breakdown && typeof source_breakdown === 'object')
+    ? Object.entries(source_breakdown).map(([name, value]) => ({
+        name,
+        value: Number(value) || 0,
+        fill: ['#22d3ee', '#34d399', '#fbbf24', '#a78bfa', '#f472b6'][
+          Object.keys(source_breakdown).indexOf(name) % 5
+        ],
+      }))
+    : [];
+  const hasSourceData = sourcePieData.length > 0 && sourcePieData.some((d) => d.value > 0);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -145,6 +137,9 @@ export default function DataPipelineLead() {
         <div className="bg-slate-900/30 border border-white/5 rounded-xl p-6">
           <h2 className="text-lg font-semibold text-white mb-4">GA4 Traffic Sources</h2>
           <div className="h-64">
+            {!hasSourceData ? (
+              <ChartEmptyState message="No traffic source data" className="min-h-[180px]" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -168,6 +163,7 @@ export default function DataPipelineLead() {
                 />
               </PieChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -187,6 +183,10 @@ export default function DataPipelineLead() {
                       <BarChart data={chartData || []}>
                         <XAxis dataKey="bin" tick={{ fontSize: 9 }} stroke="#6b7280" />
                         <YAxis hide />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1a2332', border: '1px solid rgba(255,255,255,0.1)' }}
+                          formatter={(v: number) => [v, 'Count']}
+                        />
                         <Bar dataKey="count" fill="#22d3ee" radius={[2, 2, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>

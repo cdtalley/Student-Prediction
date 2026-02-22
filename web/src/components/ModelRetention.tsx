@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { TrendingUp, Award, Phone } from 'lucide-react';
+import { ChartEmptyState } from '@/components/ChartEmptyState';
 
 interface RetentionBand {
   band: string;
@@ -182,6 +183,9 @@ export default function ModelRetention() {
           Mid-Semester Model — Feature Importance
         </h2>
         <div className="h-80">
+          {!midImp.length ? (
+            <ChartEmptyState message="No feature importance data" className="min-h-[200px]" />
+          ) : (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={midImp} layout="vertical" margin={{ left: 140 }}>
               <XAxis type="number" tick={{ fontSize: 11 }} stroke="#6b7280" />
@@ -202,6 +206,7 @@ export default function ModelRetention() {
               <Bar dataKey="value" fill="#22d3ee" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
+          )}
         </div>
       </section>
     </div>

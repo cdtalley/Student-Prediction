@@ -15,7 +15,6 @@ from lightgbm import LGBMClassifier
 from imblearn.over_sampling import SMOTE
 import joblib
 from typing import Dict, Tuple, List
-import shap
 
 
 class RetentionModel:
@@ -78,7 +77,8 @@ class RetentionModel:
         auc = roc_auc_score(y_test, y_pred_proba)
         ap = average_precision_score(y_test, y_pred_proba)
         
-        # SHAP explainer
+        # SHAP explainer (lazy import to avoid numba/numpy version constraints at import time)
+        import shap
         self.shap_explainer = shap.TreeExplainer(self.model)
         
         self.test_auc = auc
@@ -106,8 +106,11 @@ class RetentionModel:
     
     def get_shap_values(self, X: pd.DataFrame, max_samples: int = 100) -> Tuple:
         """Get SHAP values for model interpretation."""
-        if self.shap_explainer is None:
+        if self.model is None:
             raise ValueError("Model not trained. Call train() first.")
+        if self.shap_explainer is None:
+            import shap
+            self.shap_explainer = shap.TreeExplainer(self.model)
         
         X_sample = X.sample(min(max_samples, len(X)), random_state=self.random_state)
         shap_values = self.shap_explainer.shap_values(X_sample)
@@ -238,7 +241,8 @@ class LeadScoringModel:
         self.test_auc = auc
         self.test_ap = ap
         
-        # SHAP explainer
+        # SHAP explainer (lazy import to avoid numba/numpy version constraints at import time)
+        import shap
         self.shap_explainer = shap.TreeExplainer(self.model)
         
         # Feature importance (combined)
@@ -277,8 +281,11 @@ class LeadScoringModel:
     
     def get_shap_values(self, X: pd.DataFrame, max_samples: int = 100) -> Tuple:
         """Get SHAP values for model interpretation."""
-        if self.shap_explainer is None:
+        if self.model is None:
             raise ValueError("Model not trained. Call train() first.")
+        if self.shap_explainer is None:
+            import shap
+            self.shap_explainer = shap.TreeExplainer(self.model)
         
         X_sample = X.sample(min(max_samples, len(X)), random_state=self.random_state)
         shap_values = self.shap_explainer.shap_values(X_sample)

@@ -6,6 +6,7 @@ Exposes data pipeline, feature engineering, and model endpoints.
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
+import os
 import sys
 
 # Add project root to path
@@ -264,18 +265,43 @@ def _ensure_models_exist():
             )
 
 
+def _data_cache_key() -> tuple:
+    """Cache key from data file mtimes so we invalidate when data is regenerated."""
+    if os.getenv("DATA_SOURCE", "").lower() == "bigquery":
+        return ("bq",)
+    key = []
+    for name in ["retention_data.csv", "ga4_data.csv", "crm_data.csv", "sis_data.csv"]:
+        p = DATA_DIR / name
+        key.append((name, p.stat().st_mtime if p.exists() else 0))
+    return tuple(key)
+
+
+# In-memory cache: (cache_key, payload). Invalidates when data files change.
+_data_cache: dict = {}  # "retention" -> (key, df), "lead" -> (key, (ga4, crm, sis))
+
+
 def load_retention_data():
-    """Load retention dataset (local CSV or BigQuery if DATA_SOURCE=bigquery)."""
+    """Load retention dataset (local CSV or BigQuery). Cached until data files change."""
     _ensure_data_exists()
+    ckey = _data_cache_key()
+    if _data_cache.get("retention") and _data_cache["retention"][0] == ckey:
+        return _data_cache["retention"][1]
     from src.data_loader import load_retention_data as _load
-    return _load(DATA_DIR)
+    df = _load(DATA_DIR)
+    _data_cache["retention"] = (ckey, df)
+    return df
 
 
 def load_lead_data():
-    """Load GA4, CRM, SIS (local CSV or BigQuery if DATA_SOURCE=bigquery)."""
+    """Load GA4, CRM, SIS. Cached until data files change."""
     _ensure_data_exists()
+    ckey = _data_cache_key()
+    if _data_cache.get("lead") and _data_cache["lead"][0] == ckey:
+        return _data_cache["lead"][1]
     from src.data_loader import load_lead_data as _load
-    return _load(DATA_DIR)
+    result = _load(DATA_DIR)
+    _data_cache["lead"] = (ckey, result)
+    return result
 
 
 def get_retention_pipeline_stats(df: pd.DataFrame) -> dict:
@@ -400,12 +426,20 @@ def get_lead_pipeline():
     ga4_dist = get_feature_distributions(
         ga4, ["page_views", "session_duration", "bounce_rate", "engagement_score"]
     )
+    crm_num = crm.select_dtypes(include=[np.number])
+    crm_filled = crm.copy()
+    if not crm_num.empty:
+        crm_filled[crm_num.columns] = crm_num.fillna(crm_num.median()).fillna(0)
+    sis_num = sis.select_dtypes(include=[np.number])
+    sis_filled = sis.copy()
+    if not sis_num.empty:
+        sis_filled[sis_num.columns] = sis_num.fillna(sis_num.median()).fillna(0)
     crm_dist = get_feature_distributions(
-        crm.fillna(crm.median()), 
+        crm_filled,
         ["age", "lead_score", "email_opens", "response_time_hours"]
     )
     sis_dist = get_feature_distributions(
-        sis.fillna(sis.median()),
+        sis_filled,
         ["gpa", "test_score", "application_complete_days"]
     )
     
@@ -673,13 +707,14 @@ def get_coach_list(school_id: int | None = None, top_n: int = 100):
     X = mid_feat[mid_cols].fillna(mid_feat[mid_cols].median()).fillna(0)
     mid = joblib.load(MODELS_DIR / "retention_mid_model.pkl")
     preds = mid["model"].predict_proba(X)[:, 1]
+    effective_top_n = min(top_n, 500)
     coach_list = build(
         df, mid_feat, preds,
         school_names=school_names or None,
-        top_n=min(top_n, 500),
+        top_n=effective_top_n,
         school_id_filter=school_id,
     )
-    return {"schools": coach_list, "top_n": top_n}
+    return {"schools": coach_list, "top_n": effective_top_n}
 
 
 @app.get("/api/lead-scores")
@@ -707,8 +742,9 @@ def get_lead_scores(limit: int = 500):
         preds = w_xgb * xgb_p + w_lgb * lgb_p
     else:
         preds = xgb_p
-    rows = build(features_df, preds, limit=min(limit, 2000))
-    return {"leads": rows, "limit": limit}
+    effective_limit = min(limit, 2000)
+    rows = build(features_df, preds, limit=effective_limit)
+    return {"leads": rows, "limit": effective_limit}
 
 
 @app.post("/api/predict/retention")

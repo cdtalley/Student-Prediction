@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetchWithCache, BACKEND_HELP } from '@/lib/api';
 import {
   BarChart,
   Bar,
@@ -16,7 +16,9 @@ import {
   Pie,
   Cell,
   ComposedChart,
+  Legend,
 } from 'recharts';
+import { ChartEmptyState } from '@/components/ChartEmptyState';
 import {
   GraduationCap,
   Users,
@@ -101,9 +103,9 @@ export default function StakeholderDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<StakeholderData>('/api/stakeholder')
+    apiFetchWithCache<StakeholderData>('/api/stakeholder')
       .then(setData)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
 
@@ -118,14 +120,23 @@ export default function StakeholderDashboard() {
     );
   }
   if (error || !data) {
+    const isBackendDown = !error || error.includes('Cannot reach') || error.includes('fetch');
     return (
-      <div className="flex flex-col items-center justify-center min-h-[80vh] text-center">
+      <div className="flex flex-col items-center justify-center min-h-[80vh] text-center px-4">
         <AlertTriangle className="w-16 h-16 text-amber-500 mb-4" />
         <h2 className="text-xl font-bold text-white mb-2">Unable to load dashboard</h2>
-        <p className="text-gray-500 max-w-md">
-          {error || 'Ensure the FastAPI backend is running on port 8000 and data has been generated.'}
+        <p className="text-gray-400 max-w-lg">
+          {error || BACKEND_HELP}
         </p>
-        <p className="text-sm text-gray-600 mt-4">Run: <code className="bg-slate-800 px-2 py-1 rounded">.\run.ps1</code></p>
+        <div className="mt-6 text-left space-y-2 rounded-xl bg-slate-800/60 border border-white/10 p-4 max-w-md">
+          <p className="text-cyan-400 font-medium text-sm">From project root:</p>
+          <code className="block text-sm text-gray-300 bg-slate-900 px-3 py-2 rounded">python -m uvicorn api.main:app --port 8000</code>
+          <p className="text-amber-400/90 text-sm">Then generate data (if needed):</p>
+          <code className="block text-sm text-gray-300 bg-slate-900 px-3 py-2 rounded">python src/train.py</code>
+        </div>
+        {!isBackendDown && (
+          <p className="text-sm text-gray-500 mt-4">Or run <code className="bg-slate-800 px-2 py-1 rounded">.\run.ps1</code></p>
+        )}
       </div>
     );
   }
@@ -240,6 +251,9 @@ export default function StakeholderDashboard() {
         <div className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Withdrawal Rate by Semester</h3>
           <div className="h-64">
+            {!retention.by_semester?.length ? (
+              <ChartEmptyState message="No semester data" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={retention.by_semester}>
                 <defs>
@@ -269,12 +283,17 @@ export default function StakeholderDashboard() {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         <div className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Risk Score Distribution</h3>
+          <p className="text-sm text-gray-500 mb-1">Student count by risk score bin</p>
           <div className="h-64">
+            {!retention.risk_distribution?.length ? (
+              <ChartEmptyState message="No risk distribution data" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={retention.risk_distribution} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
@@ -286,10 +305,12 @@ export default function StakeholderDashboard() {
                     border: '1px solid rgba(255,255,255,0.1)',
                     borderRadius: '8px',
                   }}
+                  formatter={(v: number) => [v, 'Count']}
                 />
-                <Bar dataKey="count" fill="#34d399" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" fill="#34d399" radius={[4, 4, 0, 0]} name="Students" />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
       </section>
@@ -299,6 +320,9 @@ export default function StakeholderDashboard() {
         <div className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Withdrawal Rate by GPA Range</h3>
           <div className="h-64">
+            {!retention.gpa_vs_withdrawal?.length ? (
+              <ChartEmptyState message="No GPA data" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={retention.gpa_vs_withdrawal}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
@@ -315,12 +339,16 @@ export default function StakeholderDashboard() {
                 <Bar dataKey="withdrawal_rate" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </ComposedChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         <div className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Model Performance (AUC-ROC)</h3>
           <div className="h-64">
+            {!model_performance?.length ? (
+              <ChartEmptyState message="No model metrics" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={model_performance} layout="vertical" margin={{ left: 100 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
@@ -337,6 +365,7 @@ export default function StakeholderDashboard() {
                 <Bar dataKey="auc" fill="#22d3ee" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
       </section>
@@ -348,6 +377,9 @@ export default function StakeholderDashboard() {
           <p className="text-sm text-gray-500 mb-4">Student distribution by dropout risk (A=Critical → D=Low)</p>
           <div className="flex items-center gap-6">
             <div className="h-56 w-56 flex-shrink-0">
+              {!retentionBandsPie.length || retentionBandsPie.every((d) => d.value === 0) ? (
+                <ChartEmptyState message="No band data" className="min-h-[224px]" />
+              ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -373,6 +405,7 @@ export default function StakeholderDashboard() {
                   />
                 </PieChart>
               </ResponsiveContainer>
+              )}
             </div>
             <div className="flex-1 space-y-2">
               {retention.bands.map((b) => (
@@ -398,6 +431,9 @@ export default function StakeholderDashboard() {
           <p className="text-sm text-gray-500 mb-4">Lead distribution by enrollment likelihood (A=Hot → D=Cold)</p>
           <div className="flex items-center gap-6">
             <div className="h-56 w-56 flex-shrink-0">
+              {!leadBandsPie.length || leadBandsPie.every((d) => d.value === 0) ? (
+                <ChartEmptyState message="No band data" className="min-h-[224px]" />
+              ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -423,6 +459,7 @@ export default function StakeholderDashboard() {
                   />
                 </PieChart>
               </ResponsiveContainer>
+              )}
             </div>
             <div className="flex-1 space-y-2">
               {lead_scoring.bands.map((b) => (
@@ -449,6 +486,9 @@ export default function StakeholderDashboard() {
         <div className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Traffic Sources (GA4)</h3>
           <div className="h-72">
+            {!lead_scoring.traffic_sources?.length || lead_scoring.traffic_sources.every((s) => !s.leads) ? (
+              <ChartEmptyState message="No traffic source data" className="min-h-[200px]" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -474,12 +514,16 @@ export default function StakeholderDashboard() {
                 />
               </PieChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         <div className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Enrollment by Program Interest</h3>
           <div className="h-72">
+            {!lead_scoring.enrollment_by_program?.length ? (
+              <ChartEmptyState message="No enrollment data" className="min-h-[200px]" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={lead_scoring.enrollment_by_program} layout="vertical" margin={{ left: 70 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
@@ -495,6 +539,7 @@ export default function StakeholderDashboard() {
                 <Bar dataKey="enrolled" fill="#34d399" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
       </section>
@@ -503,31 +548,41 @@ export default function StakeholderDashboard() {
       <section className="grid lg:grid-cols-2 gap-6">
         <div className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Data Source Coverage</h3>
-          <p className="text-sm text-gray-500 mb-4">Records and join coverage across GA4, CRM, SIS</p>
+          <p className="text-sm text-gray-500 mb-4">Records (left axis) and join coverage % (right axis)</p>
           <div className="h-56">
+            {!lead_scoring.data_coverage?.length ? (
+              <ChartEmptyState message="No coverage data" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={lead_scoring.data_coverage} margin={{ left: 20 }}>
+              <ComposedChart data={lead_scoring.data_coverage} margin={{ left: 20, right: 24 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                 <XAxis dataKey="source" stroke="#6b7280" tick={{ fontSize: 11 }} />
-                <YAxis stroke="#6b7280" tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="left" stroke="#6b7280" tick={{ fontSize: 11 }} tickFormatter={(v) => v >= 1000 ? `${v / 1000}k` : String(v)} />
+                <YAxis yAxisId="right" orientation="right" stroke="#6b7280" tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: '#1a2332',
                     border: '1px solid rgba(255,255,255,0.1)',
                     borderRadius: '8px',
                   }}
+                  formatter={(v: number, name: string) => [name === 'Records' ? v.toLocaleString() : `${v}%`, name]}
                 />
-                <Bar dataKey="records" fill="#22d3ee" radius={[4, 4, 0, 0]} name="Records" />
-                <Bar dataKey="coverage" fill="#34d399" radius={[4, 4, 0, 0]} name="Coverage %" />
-              </BarChart>
+                <Legend wrapperStyle={{ color: '#9ca3af' }} />
+                <Bar yAxisId="left" dataKey="records" fill="#22d3ee" radius={[4, 4, 0, 0]} name="Records" />
+                <Bar yAxisId="right" dataKey="coverage" fill="#34d399" radius={[4, 4, 0, 0]} name="Coverage %" />
+              </ComposedChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         <div className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">GA4 Engagement Summary</h3>
           <div className="grid grid-cols-2 gap-4">
-            {lead_scoring.engagement_summary.map((e) => (
+            {(lead_scoring.engagement_summary || []).length === 0 ? (
+              <ChartEmptyState message="No engagement metrics" className="col-span-2 min-h-[100px]" />
+            ) : (
+            (lead_scoring.engagement_summary || []).map((e) => (
               <div
                 key={e.metric}
                 className="rounded-lg bg-slate-800/50 border border-white/5 p-4"
@@ -535,7 +590,8 @@ export default function StakeholderDashboard() {
                 <p className="text-2xl font-bold text-cyan-400">{e.value}</p>
                 <p className="text-xs text-gray-500 mt-1">{e.metric}</p>
               </div>
-            ))}
+            ))
+            )}
           </div>
         </div>
       </section>
@@ -614,11 +670,14 @@ export default function StakeholderDashboard() {
         <div className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Retention Model — Top Predictors</h3>
           <div className="h-64">
+            {!retention.top_features?.length ? (
+              <ChartEmptyState message="No feature importance" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={retention.top_features} layout="vertical" margin={{ left: 100 }}>
+              <BarChart data={retention.top_features} layout="vertical" margin={{ left: 115 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
                 <XAxis type="number" stroke="#6b7280" tick={{ fontSize: 11 }} />
-                <YAxis dataKey="name" type="category" width={95} stroke="#6b7280" tick={{ fontSize: 10 }} />
+                <YAxis dataKey="name" type="category" width={110} stroke="#6b7280" tick={{ fontSize: 10 }} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: '#1a2332',
@@ -630,17 +689,21 @@ export default function StakeholderDashboard() {
                 <Bar dataKey="importance" fill="#22d3ee" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         <div className="bg-slate-900/40 border border-white/5 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Lead Scoring Model — Top Predictors</h3>
           <div className="h-64">
+            {!lead_scoring.top_features?.length ? (
+              <ChartEmptyState message="No feature importance" />
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={lead_scoring.top_features} layout="vertical" margin={{ left: 100 }}>
+              <BarChart data={lead_scoring.top_features} layout="vertical" margin={{ left: 115 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
                 <XAxis type="number" stroke="#6b7280" tick={{ fontSize: 11 }} />
-                <YAxis dataKey="name" type="category" width={95} stroke="#6b7280" tick={{ fontSize: 10 }} />
+                <YAxis dataKey="name" type="category" width={110} stroke="#6b7280" tick={{ fontSize: 10 }} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: '#1a2332',
@@ -652,6 +715,7 @@ export default function StakeholderDashboard() {
                 <Bar dataKey="importance" fill="#34d399" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
       </section>

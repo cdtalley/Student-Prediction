@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetchWithCache } from '@/lib/api';
+import { DataPipelineLoading, DataPipelineError } from '@/components/DataPipelineShell';
+import { ChartEmptyState } from '@/components/ChartEmptyState';
 import {
   BarChart,
   Bar,
@@ -38,26 +40,14 @@ export default function DataPipelineRetention() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<RetentionPipelineData>('/api/data-pipeline/retention')
+    apiFetchWithCache<RetentionPipelineData>('/api/data-pipeline/retention')
       .then(setData)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-pulse text-cyan-400">Loading pipeline data...</div>
-      </div>
-    );
-  }
-  if (error || !data) {
-    return (
-      <div className="text-amber-500">
-        Failed to load data. Ensure the FastAPI backend is running on port 8000.
-      </div>
-    );
-  }
+  if (loading) return <DataPipelineLoading pipeline="retention" />;
+  if (error || !data) return <DataPipelineError error={error || 'Failed to load data.'} />;
 
   const { stats, distributions, real_world_issues } = data;
 
@@ -117,13 +107,17 @@ export default function DataPipelineRetention() {
         <h2 className="text-lg font-semibold text-white mb-4">Feature Distributions</h2>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {distributions.slice(0, 6).map((d) => {
-            const chartData = d.bins
+            const chartData = (d.bins || [])
               .slice(0, -1)
-              .map((b, i) => ({ bin: b.toFixed(1), count: d.counts[i] || 0 }));
+              .map((b, i) => ({ bin: Number(b).toFixed(1), count: d.counts?.[i] || 0 }));
+            const hasData = chartData.length > 0 && chartData.some((r) => r.count > 0);
             return (
               <div key={d.feature} className="bg-slate-800/30 rounded-lg p-4">
                 <p className="font-mono text-sm text-cyan-400 mb-2">{d.feature}</p>
                 <div className="h-32">
+                  {!hasData ? (
+                    <ChartEmptyState message="No distribution" className="min-h-[80px]" />
+                  ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData}>
                       <XAxis dataKey="bin" tick={{ fontSize: 10 }} stroke="#6b7280" />
@@ -135,6 +129,7 @@ export default function DataPipelineRetention() {
                       <Bar dataKey="count" fill="#22d3ee" radius={[2, 2, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
+                  )}
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
                   μ={d.mean.toFixed(2)} σ={d.std.toFixed(2)} • {d.missing_pct}% missing
