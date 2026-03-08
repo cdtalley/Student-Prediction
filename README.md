@@ -261,15 +261,3 @@ All models handle these issues through:
 ## 📄 License
 
 This is a portfolio project demonstrating data science and ML engineering capabilities.
-
-## 👤 Author
-
-Senior Data Scientist with expertise in:
-- Predictive modeling and ML
-- Data engineering and ETL
-- Business intelligence and analytics
-- Production ML systems
-
----
-
-**Note**: This project uses synthetic data to demonstrate capabilities while respecting data privacy. In production, real data would be used with appropriate security and privacy measures.
